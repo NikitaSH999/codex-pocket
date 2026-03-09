@@ -688,6 +688,32 @@ select:focus-visible,
   color: var(--text-muted);
 }
 
+.token-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.token-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(114, 240, 182, 0.18);
+  background: rgba(114, 240, 182, 0.08);
+  color: var(--text);
+  font-size: 0.84rem;
+  line-height: 1;
+}
+
+.token-chip--muted {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+}
+
 .approval-card {
   background: linear-gradient(180deg, rgba(37, 24, 12, 0.92), rgba(23, 16, 11, 0.92));
   border-color: rgba(255, 200, 111, 0.24);

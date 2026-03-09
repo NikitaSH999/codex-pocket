@@ -33,6 +33,9 @@ export interface McpServerStatus {
   toolCount: number;
   resourceCount: number;
   resourceTemplateCount: number;
+  toolNames: string[];
+  resourceNames: string[];
+  resourceTemplateNames: string[];
 }
 
 export interface McpStatusResponse {

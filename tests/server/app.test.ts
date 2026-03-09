@@ -142,6 +142,11 @@ describe("auth api", () => {
         onServerRequest: () => () => undefined,
         onStderr: () => () => undefined,
         sendUserMessage: async () => undefined,
+        forkThread: async () => ({
+          threadId: threadId ?? `thread-${path.basename(cwd)}-fork`,
+          cwd,
+          model: "gpt-5.4",
+        }),
         listModels: async () => [],
         listMcpServerStatus: async () => [],
         respondToServerRequest: () => undefined,
@@ -170,6 +175,77 @@ describe("auth api", () => {
     expect(create.json()).toMatchObject({
       session: {
         cwd: childDir,
+      },
+    });
+  });
+
+  it("forks a session into a new thread in the same workspace", async () => {
+    const dataDir = path.join(
+      "C:\\Users\\kiwun\\Documents\\localapp",
+      `.tmp-test-fork-session-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    );
+    const workspaceRoot = path.join(dataDir, "workspace");
+
+    await rm(dataDir, { recursive: true, force: true });
+    await mkdir(workspaceRoot, { recursive: true });
+
+    build = await buildApp({
+      dataDir,
+      workspacePath: workspaceRoot,
+      enforceNetworkGuard: false,
+      codexFactory: async ({ cwd, threadId }) => ({
+        threadId: threadId ?? "thread-original",
+        cwd,
+        model: "gpt-5.4",
+        onNotification: () => () => undefined,
+        onServerRequest: () => () => undefined,
+        onStderr: () => () => undefined,
+        sendUserMessage: async () => undefined,
+        listModels: async () => [],
+        listMcpServerStatus: async () => [],
+        respondToServerRequest: () => undefined,
+        forkThread: async () => ({
+          threadId: "thread-forked",
+          cwd,
+          model: "gpt-5.4",
+        }),
+        dispose: async () => undefined,
+      }),
+    });
+
+    const setup = await build.inject({
+      method: "POST",
+      url: "/api/auth/setup",
+      payload: { pin: "1234" },
+    });
+
+    const create = await build.inject({
+      method: "POST",
+      url: "/api/sessions",
+      cookies: {
+        codex_mobile_session: setup.cookies[0]?.value ?? "",
+      },
+      payload: {
+        workspacePath: workspaceRoot,
+      },
+    });
+
+    const originalSessionId = create.json().session.id;
+    const fork = await build.inject({
+      method: "POST",
+      url: `/api/sessions/${originalSessionId}/fork`,
+      cookies: {
+        codex_mobile_session: setup.cookies[0]?.value ?? "",
+      },
+    });
+
+    expect(fork.statusCode).toBe(201);
+    expect(fork.json()).toMatchObject({
+      session: {
+        id: "thread-forked",
+        threadId: "thread-forked",
+        cwd: workspaceRoot,
+        status: "idle",
       },
     });
   });

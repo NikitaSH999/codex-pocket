@@ -234,6 +234,13 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     return { session };
   });
 
+  app.post("/api/sessions/:id/fork", async (request, reply) => {
+    requireAuth(request, reply, auth);
+    const session = await sessions.forkSession((request.params as { id: string }).id);
+    reply.code(201);
+    return { session };
+  });
+
   app.post("/api/sessions/:id/message", async (request, reply) => {
     requireAuth(request, reply, auth);
     const payload = z

@@ -34,7 +34,8 @@ export type ShellQuickAction =
   | { kind: "set-model"; model: string | null }
   | { kind: "open-tab"; tab: ShellTab }
   | { kind: "select-workspace"; workspacePath: string }
-  | { kind: "create-session"; workspacePath: string };
+  | { kind: "create-session"; workspacePath: string }
+  | { kind: "fork-session" };
 
 interface AppShellProps {
   authenticated: boolean;
@@ -44,6 +45,7 @@ interface AppShellProps {
   activeTab: ShellTab;
   onTabChange: (tab: ShellTab) => void;
   onCreateSession: (workspacePath?: string) => void;
+  onForkSession: () => void;
   onSelectSession: (sessionId: string) => void;
   onSelectWorkspace: (workspacePath: string) => void;
   onSendMessage: () => void;
@@ -100,6 +102,7 @@ export function AppShell({
   activeTab,
   onTabChange,
   onCreateSession,
+  onForkSession,
   onSelectSession,
   onSelectWorkspace,
   onSendMessage,
@@ -361,6 +364,11 @@ export function AppShell({
             <button className="secondary-button" type="button" onClick={() => onCreateSession(activeWorkspacePath)}>
               {`New in ${activeWorkspaceLabel}`}
             </button>
+            {currentSession ? (
+              <button className="secondary-button" type="button" onClick={onForkSession}>
+                Fork session
+              </button>
+            ) : null}
             <div className="quick-menu-shell">
               <button
                 aria-expanded={quickMenuOpen}
@@ -530,6 +538,33 @@ export function AppShell({
                       <span>{server.authStatus}</span>
                     </header>
                     <p>{`${server.toolCount} tools · ${server.resourceCount} resources · ${server.resourceTemplateCount} templates`}</p>
+                    {server.toolNames.length ? (
+                      <div className="token-list">
+                        {server.toolNames.map((tool) => (
+                          <span className="token-chip" key={`${server.name}-tool-${tool}`}>
+                            {tool}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {server.resourceNames.length ? (
+                      <div className="token-list">
+                        {server.resourceNames.map((resource) => (
+                          <span className="token-chip token-chip--muted" key={`${server.name}-resource-${resource}`}>
+                            {resource}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    {server.resourceTemplateNames.length ? (
+                      <div className="token-list">
+                        {server.resourceTemplateNames.map((template) => (
+                          <span className="token-chip token-chip--muted" key={`${server.name}-template-${template}`}>
+                            {template}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </article>
                 ))
               ) : (
@@ -1260,6 +1295,15 @@ function buildQuickActions(
       action: { kind: "create-session", workspacePath: activeWorkspacePath },
     },
   ];
+
+  if (currentSession) {
+    actions.push({
+      id: `fork-${currentSession.id}`,
+      label: "Fork session",
+      description: "Branch the current thread into a new working copy.",
+      action: { kind: "fork-session" },
+    });
+  }
 
   for (const model of modelOptions.slice(0, 5)) {
     actions.push({

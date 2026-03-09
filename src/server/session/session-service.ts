@@ -184,6 +184,51 @@ export class SessionService {
     return state.sessions[sessionId]!;
   }
 
+  async forkSession(sessionId: string): Promise<SessionRecord> {
+    const session = await this.getRequiredSession(sessionId);
+    const bridge = await this.ensureBridge(session);
+    const fork = await bridge.forkThread({
+      cwd: session.cwd,
+      model: session.preferences.model,
+      approvalPolicy: session.preferences.approvalPolicy,
+    });
+    const now = Date.now();
+    const forkedSession: SessionRecord = {
+      ...session,
+      id: fork.threadId,
+      threadId: fork.threadId,
+      title: `${session.title} (fork)`,
+      cwd: fork.cwd,
+      createdAt: now,
+      updatedAt: now,
+      status: "idle",
+      messages: session.messages.map((message) => ({ ...message })),
+      activity: [],
+      commands: [],
+      tools: [],
+      planBlocks: session.planBlocks.map((block) => ({ ...block })),
+      approvals: [],
+    };
+
+    await this.options.store.write((current) => ({
+      ...current,
+      sessions: {
+        ...current.sessions,
+        [forkedSession.id]: forkedSession,
+      },
+    }));
+
+    const forkBridge = await this.createBridge({
+      cwd: fork.cwd,
+      threadId: fork.threadId,
+      model: session.preferences.model,
+      approvalPolicy: session.preferences.approvalPolicy,
+    });
+    this.attachBridge(forkedSession.id, forkBridge);
+
+    return forkedSession;
+  }
+
   async listModels(sessionId: string): Promise<ModelOption[]> {
     const session = await this.getRequiredSession(sessionId);
     const bridge = await this.ensureBridge(session);

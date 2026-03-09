@@ -59,6 +59,12 @@ export interface BridgeRuntimePreferences {
   approvalPolicy?: ApprovalPolicy;
 }
 
+export interface BridgeForkOptions {
+  cwd?: string;
+  model?: string | null;
+  approvalPolicy?: ApprovalPolicy;
+}
+
 export interface BridgeModelOption {
   id: string;
   model: string;
@@ -76,6 +82,9 @@ export interface BridgeMcpServerStatus {
   toolCount: number;
   resourceCount: number;
   resourceTemplateCount: number;
+  toolNames: string[];
+  resourceNames: string[];
+  resourceTemplateNames: string[];
 }
 
 export interface CodexBridgeLike {
@@ -90,6 +99,7 @@ export interface CodexBridgeLike {
     mode: CollaborationModeKind,
     preferences?: BridgeRuntimePreferences,
   ): Promise<void>;
+  forkThread(options?: BridgeForkOptions): Promise<BridgeThreadInfo>;
   listModels(): Promise<BridgeModelOption[]>;
   listMcpServerStatus(): Promise<BridgeMcpServerStatus[]>;
   respondToServerRequest(requestId: string, result: unknown): void;
@@ -206,6 +216,22 @@ export class CodexBridge implements CodexBridgeLike {
     }));
   }
 
+  async forkThread(options: BridgeForkOptions = {}): Promise<BridgeThreadInfo> {
+    const response = await this.request("thread/fork", {
+      threadId: this.threadInfo.threadId,
+      cwd: options.cwd ?? this.threadInfo.cwd,
+      approvalPolicy: options.approvalPolicy ?? "never",
+      sandbox: "danger-full-access",
+      model: options.model ?? this.threadInfo.model,
+    });
+
+    return {
+      threadId: response.thread.id,
+      model: response.model ?? options.model ?? this.threadInfo.model,
+      cwd: response.cwd ?? options.cwd ?? this.threadInfo.cwd,
+    };
+  }
+
   async listMcpServerStatus(): Promise<BridgeMcpServerStatus[]> {
     const response = await this.request("mcpServerStatus/list", { limit: 100 });
     return (response.data ?? []).map((server: any) => ({
@@ -214,6 +240,15 @@ export class CodexBridge implements CodexBridgeLike {
       toolCount: Object.keys(server.tools ?? {}).length,
       resourceCount: (server.resources ?? []).length,
       resourceTemplateCount: (server.resourceTemplates ?? []).length,
+      toolNames: Object.keys(server.tools ?? {}).slice(0, 6),
+      resourceNames: (server.resources ?? [])
+        .map((resource: any) => resource.name ?? resource.uri ?? resource.path)
+        .filter(Boolean)
+        .slice(0, 4),
+      resourceTemplateNames: (server.resourceTemplates ?? [])
+        .map((template: any) => template.name ?? template.uriTemplate ?? template.uri)
+        .filter(Boolean)
+        .slice(0, 4),
     }));
   }
 

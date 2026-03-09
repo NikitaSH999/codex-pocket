@@ -317,6 +317,23 @@ export function App() {
     }
   }
 
+  async function handleForkSession() {
+    if (!currentSession) {
+      return;
+    }
+
+    setError(null);
+    try {
+      const response = await api.forkSession(currentSession.id);
+      applySessionSnapshot(response.session);
+      setActiveSessionId(response.session.id);
+      setSelectedWorkspacePath(response.session.cwd);
+      setActiveTab("chat");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Session fork failed.");
+    }
+  }
+
   async function handleSendMessage() {
     if (!currentSession || (!sessionDraft.trim() && !composerAttachments.length)) {
       return;
@@ -489,6 +506,9 @@ export function App() {
       case "create-session":
         await handleCreateSession(action.workspacePath);
         return;
+      case "fork-session":
+        await handleForkSession();
+        return;
     }
   }
 
@@ -501,6 +521,7 @@ export function App() {
       activeTab={activeTab}
       onTabChange={setActiveTab}
       onCreateSession={handleCreateSession}
+      onForkSession={handleForkSession}
       onSelectSession={(sessionId) => {
         const nextSession = sessions.find((session) => session.id === sessionId) ?? null;
         setActiveSessionId(sessionId);

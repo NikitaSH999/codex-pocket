@@ -71,6 +71,11 @@ export const api = {
   getSession(sessionId: string): Promise<SessionResponse> {
     return requestJson<SessionResponse>(`/api/sessions/${sessionId}`);
   },
+  forkSession(sessionId: string): Promise<SessionResponse> {
+    return requestJson<SessionResponse>(`/api/sessions/${sessionId}/fork`, {
+      method: "POST",
+    });
+  },
   sendMessage(sessionId: string, payload: SendMessageRequest): Promise<SessionResponse> {
     return requestJson<SessionResponse>(`/api/sessions/${sessionId}/message`, {
       method: "POST",

@@ -55,6 +55,7 @@ describe("AppShell", () => {
       activeTab: "chat",
       onTabChange: () => undefined,
       onCreateSession: () => undefined,
+      onForkSession: () => undefined,
       onSelectSession: () => undefined,
       onSelectWorkspace: () => undefined,
       onSendMessage: () => undefined,
@@ -230,6 +231,18 @@ describe("AppShell", () => {
     expect(onSelectWorkspace).toHaveBeenCalledWith("C:\\Users\\kiwun\\Documents\\VPN");
   });
 
+  it("forks the current session from the header action", () => {
+    const onForkSession = vi.fn();
+
+    renderShell({
+      onForkSession,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /fork session/i }));
+
+    expect(onForkSession).toHaveBeenCalledTimes(1);
+  });
+
   it("shows slash commands for quick actions inside the composer", async () => {
     const onQuickAction = vi.fn(async () => undefined);
 
@@ -250,6 +263,28 @@ describe("AppShell", () => {
         mode: "plan",
       }),
     );
+  });
+
+  it("shows MCP tool names in the activity summary", () => {
+    renderShell({
+      activeTab: "activity",
+      mcpStatus: [
+        {
+          name: "filesystem",
+          authStatus: "ready",
+          toolCount: 4,
+          resourceCount: 2,
+          resourceTemplateCount: 1,
+          toolNames: ["read_file", "write_file", "list_dir"],
+          resourceNames: ["workspace"],
+          resourceTemplateNames: ["repo://{branch}"],
+        },
+      ],
+    });
+
+    expect(screen.getByText("read_file")).toBeInTheDocument();
+    expect(screen.getByText("workspace")).toBeInTheDocument();
+    expect(screen.getByText("repo://{branch}")).toBeInTheDocument();
   });
 
   it("sends a message with ctrl enter from the composer", () => {
@@ -292,6 +327,27 @@ describe("AppShell", () => {
       expect.objectContaining({
         kind: "set-mode",
         mode: "plan",
+      }),
+    );
+  });
+
+  it("matches fork as a slash action", async () => {
+    const onQuickAction = vi.fn(async () => undefined);
+
+    renderShell({
+      sessionDraft: "/fork",
+      onQuickAction,
+    });
+
+    fireEvent.click(
+      within(screen.getByRole("menu", { name: /slash commands/i })).getByRole("button", {
+        name: /fork session/i,
+      }),
+    );
+
+    expect(onQuickAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "fork-session",
       }),
     );
   });
