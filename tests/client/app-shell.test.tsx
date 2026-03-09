@@ -1,0 +1,218 @@
+import type { ComponentProps } from "react";
+
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+
+import { AppShell } from "../../src/client/components/app-shell";
+import type { CodexHistoryEntry, SessionRecord } from "../../src/shared/contracts";
+
+describe("AppShell", () => {
+  function renderShell(overrides?: Partial<ComponentProps<typeof AppShell>>) {
+    const session: SessionRecord = {
+      id: "session-1",
+      threadId: "thread-1",
+      title: "Новая сессия",
+      cwd: "C:\\Users\\kiwun\\Documents\\localapp",
+      createdAt: 1,
+      updatedAt: 2,
+      mode: "plan",
+      status: "running",
+      messages: [
+        {
+          itemId: "user-1",
+          turnId: "turn-1",
+          role: "user",
+          text: "Привет",
+          state: "final",
+          createdAt: 1,
+        },
+      ],
+      activity: [
+        {
+          id: "activity-1",
+          type: "status_update",
+          turnId: "turn-1",
+          status: "running",
+          createdAt: 2,
+        },
+      ],
+      commands: [],
+      tools: [],
+      planBlocks: [],
+    };
+
+    const props: ComponentProps<typeof AppShell> = {
+      authenticated: true,
+      currentSession: session,
+      sessions: [session],
+      selectedWorkspacePath: "C:\\Users\\kiwun\\Documents\\localapp",
+      activeTab: "chat",
+      onTabChange: () => undefined,
+      onCreateSession: () => undefined,
+      onSelectSession: () => undefined,
+      onSelectWorkspace: () => undefined,
+      onSendMessage: () => undefined,
+      onToggleMode: () => undefined,
+      onLogin: () => undefined,
+      onSetup: () => undefined,
+      historyEntries: [],
+      onImportHistory: () => undefined,
+      onSaveSettings: () => undefined,
+      workspaceBrowser: null,
+      onBrowseWorkspace: () => undefined,
+      onQuickAction: async () => undefined,
+      settings: {
+        hasAuth: true,
+        workspacePath: "C:\\Users\\kiwun\\Documents\\localapp",
+        defaultMode: "default",
+        listenUrls: [
+          {
+            label: "LAN",
+            url: "http://192.168.3.73:4318",
+          },
+        ],
+      },
+      authState: "ready",
+      sessionDraft: "",
+      onDraftChange: () => undefined,
+      ...overrides,
+    };
+
+    render(<AppShell {...props} />);
+  }
+
+  it("renders mobile navigation, plan toggle, and activity feed summary", () => {
+    renderShell();
+
+    expect(screen.getByRole("button", { name: /chat/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /activity/i })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /plan mode/i })).toBeChecked();
+    expect(screen.getByText(/^LAN$/)).toBeInTheDocument();
+    expect(screen.getAllByText(/session draft/i).length).toBeGreaterThan(0);
+  });
+
+  it("keeps a new session action visible when there is no active session", () => {
+    const onCreateSession = vi.fn();
+
+    renderShell({
+      currentSession: null,
+      sessions: [],
+      onCreateSession,
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /new in localapp/i })[0]);
+
+    expect(onCreateSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets the user choose the current browsed folder as workspace", () => {
+    const onSaveSettings = vi.fn();
+
+    renderShell({
+      activeTab: "settings",
+      workspaceBrowser: {
+        currentPath: "C:\\Users\\kiwun\\Documents",
+        parentPath: "C:\\Users\\kiwun",
+        roots: ["C:\\"],
+        entries: [
+          {
+            name: "localapp",
+            path: "C:\\Users\\kiwun\\Documents\\localapp",
+            kind: "directory",
+          },
+        ],
+      },
+      onSaveSettings,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /use current folder/i }));
+    fireEvent.click(screen.getByRole("button", { name: /save settings/i }));
+
+    expect(onSaveSettings).toHaveBeenCalledWith({
+      workspacePath: "C:\\Users\\kiwun\\Documents",
+      defaultMode: "default",
+    });
+  });
+
+  it("groups sessions and history by workspace and creates a scoped session", () => {
+    const onCreateSession = vi.fn();
+    const onSelectWorkspace = vi.fn();
+    const vpnSession: SessionRecord = {
+      id: "session-2",
+      threadId: "thread-2",
+      title: "VPN issue",
+      cwd: "C:\\Users\\kiwun\\Documents\\VPN",
+      createdAt: 2,
+      updatedAt: 3,
+      mode: "default",
+      status: "idle",
+      messages: [],
+      activity: [],
+      commands: [],
+      tools: [],
+      planBlocks: [],
+    };
+    const vpnHistory: CodexHistoryEntry = {
+      threadId: "history-vpn",
+      path: "C:\\Users\\kiwun\\.codex\\sessions\\history-vpn.jsonl",
+      cwd: "C:\\Users\\kiwun\\Documents\\VPN",
+      preview: "Fix VPN tunnel",
+      source: "codex",
+      createdAt: 2,
+      updatedAt: 4,
+    };
+
+    renderShell({
+      sessions: [
+        {
+          id: "session-1",
+          threadId: "thread-1",
+          title: "Localapp issue",
+          cwd: "C:\\Users\\kiwun\\Documents\\localapp",
+          createdAt: 1,
+          updatedAt: 5,
+          mode: "plan",
+          status: "running",
+          messages: [],
+          activity: [],
+          commands: [],
+          tools: [],
+          planBlocks: [],
+        },
+        vpnSession,
+      ],
+      currentSession: vpnSession,
+      selectedWorkspacePath: "C:\\Users\\kiwun\\Documents\\VPN",
+      historyEntries: [vpnHistory],
+      onCreateSession,
+      onSelectWorkspace,
+    });
+
+    expect(screen.getAllByRole("button", { name: /vpn workspace/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/fix vpn tunnel/i).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /new in vpn/i })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /vpn workspace/i })[0]);
+
+    expect(onCreateSession).toHaveBeenCalledWith("C:\\Users\\kiwun\\Documents\\VPN");
+    expect(onSelectWorkspace).toHaveBeenCalledWith("C:\\Users\\kiwun\\Documents\\VPN");
+  });
+
+  it("shows slash commands for quick actions inside the composer", async () => {
+    const onQuickAction = vi.fn(async () => undefined);
+
+    renderShell({
+      sessionDraft: "/pla",
+      onQuickAction,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /plan mode/i }));
+
+    expect(onQuickAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "set-mode",
+        mode: "plan",
+      }),
+    );
+  });
+});

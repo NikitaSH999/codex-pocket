@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.local/
+.tmp-*/
+.tmp-test-auth-*/
+.tmp-cookie.txt
+.tmp-ui-check.png
+*.log
+coverage/
+*.tsbuildinfo
