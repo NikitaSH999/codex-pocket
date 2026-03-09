@@ -332,6 +332,18 @@ export function App() {
     }
   }
 
+  async function handleLogout() {
+    setError(null);
+    try {
+      await api.logout();
+      setSessionDraft("");
+      setActiveTab("chat");
+      await refreshShell();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Logout failed.");
+    }
+  }
+
   function handleSelectWorkspace(workspacePath: string) {
     setSelectedWorkspacePath(workspacePath);
     setActiveSessionId(sessions.find((session) => session.cwd === workspacePath)?.id ?? null);
@@ -387,6 +399,7 @@ export function App() {
       workspaceBrowser={workspaceBrowser}
       onBrowseWorkspace={handleBrowseWorkspace}
       onQuickAction={handleQuickAction}
+      onLogout={handleLogout}
       settings={settings}
       authState={authState === "booting" ? "login" : authState}
       sessionDraft={sessionDraft}

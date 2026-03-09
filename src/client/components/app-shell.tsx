@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import type {
   ActivityItem,
@@ -38,6 +38,7 @@ interface AppShellProps {
   workspaceBrowser: WorkspaceBrowserResponse | null;
   onBrowseWorkspace: (targetPath?: string) => void;
   onQuickAction: (action: ShellQuickAction) => Promise<void> | void;
+  onLogout: () => Promise<void> | void;
   settings: SettingsResponse;
   authState: ShellAuthState;
   sessionDraft: string;
@@ -82,6 +83,7 @@ export function AppShell({
   workspaceBrowser,
   onBrowseWorkspace,
   onQuickAction,
+  onLogout,
   settings,
   authState,
   sessionDraft,
@@ -133,6 +135,35 @@ export function AppShell({
     await onQuickAction(action);
     setQuickMenuOpen(false);
     onDraftChange("");
+  }
+
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (event.key === "Escape") {
+      setQuickMenuOpen(false);
+      return;
+    }
+
+    if (event.key === "Enter" && slashQuery !== null && !event.shiftKey) {
+      if (!visibleQuickActions.length) {
+        return;
+      }
+
+      event.preventDefault();
+      void runQuickAction(visibleQuickActions[0].action);
+      return;
+    }
+
+    if (
+      event.key === "Enter" &&
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      slashQuery === null &&
+      currentSession &&
+      sessionDraft.trim()
+    ) {
+      event.preventDefault();
+      onSendMessage();
+    }
   }
 
   if (!authenticated) {
@@ -239,6 +270,13 @@ export function AppShell({
             <p className="eyebrow">{currentSession ? "Current session" : "Current workspace"}</p>
             <h2>{currentSession ? compactSessionTitle(currentSession.title) : `${activeWorkspaceLabel} workspace`}</h2>
             <p className="console__path">{activeWorkspacePath}</p>
+            <div className="console__meta">
+              <span className={`status-pill status-pill--${currentSession?.status ?? "idle"}`}>
+                {currentSession?.status ?? "ready"}
+              </span>
+              <span className="meta-pill">{currentSession?.mode === "plan" ? "plan mode" : "default mode"}</span>
+              <span className="meta-pill">{`${workspaceGroups.length} workspaces`}</span>
+            </div>
           </div>
           <div className="console__actions">
             <button className="secondary-button" type="button" onClick={() => onCreateSession(activeWorkspacePath)}>
@@ -313,6 +351,7 @@ export function AppShell({
               <textarea
                 placeholder="Send a task, ask for a plan, or continue a local coding session..."
                 value={sessionDraft}
+                onKeyDown={handleComposerKeyDown}
                 onChange={(event) => onDraftChange(event.target.value)}
               />
               {slashQuery !== null ? (
@@ -330,7 +369,9 @@ export function AppShell({
                 </div>
               ) : null}
               <div className="composer__footer">
-                <span className="composer__hint">{`/ for quick actions, current workspace: ${activeWorkspaceLabel}`}</span>
+                <span className="composer__hint">
+                  {`/ for quick actions, Ctrl+Enter to send, workspace: ${activeWorkspaceLabel}`}
+                </span>
                 <button
                   className="primary-button"
                   disabled={!currentSession || !sessionDraft.trim() || slashQuery !== null}
@@ -495,6 +536,9 @@ export function AppShell({
               >
                 Save settings
               </button>
+              <button className="secondary-button" type="button" onClick={() => void onLogout()}>
+                Lock console
+              </button>
             </div>
           </section>
         </div>
@@ -637,7 +681,9 @@ function WorkspaceGroupPanel({
 
 function MessageBubble({ message }: { message: SessionMessage }) {
   return (
-    <article className={`message-bubble message-bubble--${message.role}`}>
+    <article
+      className={`message-bubble message-bubble--${message.role}${message.state === "streaming" ? " message-bubble--streaming" : ""}`}
+    >
       <header>
         <strong>{message.role === "assistant" ? "Codex" : "You"}</strong>
         <span>{message.state === "streaming" ? "streaming" : "final"}</span>
@@ -791,19 +837,24 @@ function buildQuickActions(
   workspaceGroups: WorkspaceGroup[],
 ): QuickActionOption[] {
   const actions: QuickActionOption[] = [
-    currentSession?.mode === "plan"
-      ? {
-          id: "mode-default",
-          label: "Default mode",
-          description: "Switch the active session back to implementation mode.",
-          action: { kind: "set-mode", mode: "default" },
-        }
-      : {
-          id: "mode-plan",
-          label: "Plan mode",
-          description: "Reply in planning mode with a structured proposed plan.",
-          action: { kind: "set-mode", mode: "plan" },
-        },
+    {
+      id: "mode-plan",
+      label: "Plan mode",
+      description:
+        currentSession?.mode === "plan"
+          ? "Already enabled for the current session."
+          : "Reply in planning mode with a structured proposed plan.",
+      action: { kind: "set-mode", mode: "plan" },
+    },
+    {
+      id: "mode-default",
+      label: "Default mode",
+      description:
+        currentSession?.mode === "default" || !currentSession
+          ? "Use the standard implementation flow."
+          : "Switch the active session back to implementation mode.",
+      action: { kind: "set-mode", mode: "default" },
+    },
     {
       id: "tab-activity",
       label: "MCP status",

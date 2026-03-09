@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { AppShell } from "../../src/client/components/app-shell";
@@ -61,6 +61,7 @@ describe("AppShell", () => {
       workspaceBrowser: null,
       onBrowseWorkspace: () => undefined,
       onQuickAction: async () => undefined,
+      onLogout: async () => undefined,
       settings: {
         hasAuth: true,
         workspacePath: "C:\\Users\\kiwun\\Documents\\localapp",
@@ -206,7 +207,55 @@ describe("AppShell", () => {
       onQuickAction,
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /plan mode/i }));
+    fireEvent.click(
+      within(screen.getByRole("menu", { name: /slash commands/i })).getByRole("button", {
+        name: /plan mode/i,
+      }),
+    );
+
+    expect(onQuickAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "set-mode",
+        mode: "plan",
+      }),
+    );
+  });
+
+  it("sends a message with ctrl enter from the composer", () => {
+    const onSendMessage = vi.fn();
+
+    renderShell({
+      sessionDraft: "ship it",
+      onSendMessage,
+    });
+
+    fireEvent.keyDown(
+      screen.getByPlaceholderText(/send a task, ask for a plan/i),
+      {
+      key: "Enter",
+      code: "Enter",
+      ctrlKey: true,
+      },
+    );
+
+    expect(onSendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs the first slash action when enter is pressed", () => {
+    const onQuickAction = vi.fn(async () => undefined);
+
+    renderShell({
+      sessionDraft: "/pla",
+      onQuickAction,
+    });
+
+    fireEvent.keyDown(
+      screen.getByPlaceholderText(/send a task, ask for a plan/i),
+      {
+      key: "Enter",
+      code: "Enter",
+      },
+    );
 
     expect(onQuickAction).toHaveBeenCalledWith(
       expect.objectContaining({

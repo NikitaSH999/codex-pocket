@@ -58,6 +58,34 @@ button {
   cursor: pointer;
 }
 
+button,
+input,
+textarea,
+select,
+.workspace-item,
+.session-tile,
+.quick-menu__item,
+.slash-menu__item,
+.workspace-chip {
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+.workspace-item:focus-visible,
+.session-tile:focus-visible,
+.workspace-chip:focus-visible {
+  outline: 2px solid rgba(114, 240, 182, 0.7);
+  outline-offset: 2px;
+}
+
 .shell {
   min-height: 100vh;
   display: grid;
@@ -250,6 +278,56 @@ button {
   word-break: break-word;
 }
 
+.console__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.meta-pill,
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.status-pill::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.status-pill--running {
+  color: var(--accent);
+  border-color: rgba(114, 240, 182, 0.28);
+}
+
+.status-pill--running::before {
+  box-shadow: 0 0 0 0 rgba(114, 240, 182, 0.45);
+  animation: status-pulse 1.8s ease infinite;
+}
+
+.status-pill--done {
+  color: var(--accent-warm);
+}
+
+.status-pill--error {
+  color: var(--danger);
+}
+
+.status-pill--waiting {
+  color: var(--accent-hot);
+}
+
 .rail__section {
   margin-top: 22px;
 }
@@ -382,6 +460,15 @@ button {
   padding: 12px 14px;
 }
 
+.workspace-item:hover,
+.session-tile:hover,
+.quick-menu__item:hover,
+.slash-menu__item:hover,
+.workspace-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(114, 240, 182, 0.24);
+}
+
 .workspace-item--active {
   border-color: rgba(107, 224, 178, 0.4);
 }
@@ -484,6 +571,26 @@ button {
 .message-bubble--assistant {
   background: linear-gradient(180deg, rgba(14, 31, 27, 0.96), rgba(11, 21, 18, 0.94));
   border-color: rgba(114, 240, 182, 0.18);
+}
+
+.message-bubble--assistant header span {
+  color: var(--accent);
+}
+
+.message-bubble--assistant header span::after {
+  content: "";
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.9rem;
+  margin-left: 0.25rem;
+  vertical-align: -0.08rem;
+  border-right: 2px solid currentColor;
+  opacity: 0;
+}
+
+.message-bubble--streaming.message-bubble--assistant header span::after {
+  opacity: 1;
+  animation: cursor-blink 1s steps(1) infinite;
 }
 
 .message-bubble--user {
@@ -717,6 +824,20 @@ button {
   }
 }
 
+@keyframes status-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(114, 240, 182, 0.42);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgba(114, 240, 182, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(114, 240, 182, 0);
+  }
+}
+
 @media (max-width: 980px) {
   .shell {
     grid-template-columns: 1fr;
@@ -787,8 +908,30 @@ button {
     color: var(--text-muted);
   }
 
-  .mobile-nav__button--active {
+.mobile-nav__button--active {
     background: rgba(107, 224, 178, 0.12);
     color: var(--text);
+  }
+}
+
+@keyframes cursor-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
