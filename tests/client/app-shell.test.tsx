@@ -16,6 +16,11 @@ describe("AppShell", () => {
       createdAt: 1,
       updatedAt: 2,
       mode: "plan",
+      preferences: {
+        model: null,
+        reasoningEffort: "medium",
+        approvalPolicy: "never",
+      },
       status: "running",
       messages: [
         {
@@ -39,6 +44,7 @@ describe("AppShell", () => {
       commands: [],
       tools: [],
       planBlocks: [],
+      approvals: [],
     };
 
     const props: ComponentProps<typeof AppShell> = {
@@ -53,6 +59,8 @@ describe("AppShell", () => {
       onSelectWorkspace: () => undefined,
       onSendMessage: () => undefined,
       onToggleMode: () => undefined,
+      onUpdatePreferences: async () => undefined,
+      onResolveApproval: async () => undefined,
       onLogin: () => undefined,
       onSetup: () => undefined,
       historyEntries: [],
@@ -66,6 +74,9 @@ describe("AppShell", () => {
         hasAuth: true,
         workspacePath: "C:\\Users\\kiwun\\Documents\\localapp",
         defaultMode: "default",
+        defaultModel: null,
+        defaultReasoningEffort: "medium",
+        defaultApprovalPolicy: "never",
         listenUrls: [
           {
             label: "LAN",
@@ -74,8 +85,13 @@ describe("AppShell", () => {
         ],
       },
       authState: "ready",
+      modelOptions: [],
+      mcpStatus: [],
       sessionDraft: "",
+      composerAttachments: [],
       onDraftChange: () => undefined,
+      onAddAttachments: () => undefined,
+      onRemoveAttachment: () => undefined,
       ...overrides,
     };
 
@@ -132,6 +148,9 @@ describe("AppShell", () => {
     expect(onSaveSettings).toHaveBeenCalledWith({
       workspacePath: "C:\\Users\\kiwun\\Documents",
       defaultMode: "default",
+      defaultModel: null,
+      defaultReasoningEffort: "medium",
+      defaultApprovalPolicy: "never",
     });
   });
 
@@ -146,12 +165,18 @@ describe("AppShell", () => {
       createdAt: 2,
       updatedAt: 3,
       mode: "default",
+      preferences: {
+        model: null,
+        reasoningEffort: "medium",
+        approvalPolicy: "never",
+      },
       status: "idle",
       messages: [],
       activity: [],
       commands: [],
       tools: [],
       planBlocks: [],
+      approvals: [],
     };
     const vpnHistory: CodexHistoryEntry = {
       threadId: "history-vpn",
@@ -173,12 +198,18 @@ describe("AppShell", () => {
           createdAt: 1,
           updatedAt: 5,
           mode: "plan",
+          preferences: {
+            model: null,
+            reasoningEffort: "medium",
+            approvalPolicy: "never",
+          },
           status: "running",
           messages: [],
           activity: [],
           commands: [],
           tools: [],
           planBlocks: [],
+          approvals: [],
         },
         vpnSession,
       ],

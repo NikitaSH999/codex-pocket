@@ -139,8 +139,12 @@ describe("auth api", () => {
         cwd,
         model: "gpt-5.4",
         onNotification: () => () => undefined,
+        onServerRequest: () => () => undefined,
         onStderr: () => () => undefined,
         sendUserMessage: async () => undefined,
+        listModels: async () => [],
+        listMcpServerStatus: async () => [],
+        respondToServerRequest: () => undefined,
         dispose: async () => undefined,
       }),
     });

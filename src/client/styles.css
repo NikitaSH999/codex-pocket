@@ -613,9 +613,108 @@ select:focus-visible,
   gap: 12px;
 }
 
+.composer__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .composer__hint {
   color: var(--text-muted);
   font-size: 0.9rem;
+}
+
+.attachment-list,
+.approval-stack,
+.mcp-grid,
+.settings-card__stack {
+  display: grid;
+  gap: 10px;
+}
+
+.attachment-chip,
+.approval-card,
+.mcp-card {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 12px 14px;
+}
+
+.attachment-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.attachment-chip strong,
+.mcp-card strong,
+.approval-card strong {
+  display: block;
+}
+
+.attachment-chip span,
+.mcp-card span,
+.approval-card span,
+.empty-inline {
+  color: var(--text-muted);
+}
+
+.attachment-chip button {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.mcp-grid {
+  margin-top: 18px;
+}
+
+.mcp-card header,
+.approval-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.mcp-card p,
+.approval-card p {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.approval-card {
+  background: linear-gradient(180deg, rgba(37, 24, 12, 0.92), rgba(23, 16, 11, 0.92));
+  border-color: rgba(255, 200, 111, 0.24);
+}
+
+.approval-card__actions,
+.segment-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.approval-card__actions {
+  margin-top: 12px;
+}
+
+.segment-button {
+  min-width: 96px;
+}
+
+.segment-button--active {
+  border-color: rgba(114, 240, 182, 0.32);
+  background: rgba(114, 240, 182, 0.12);
+}
+
+.empty-inline {
+  padding: 12px 2px;
 }
 
 .quick-menu-shell {

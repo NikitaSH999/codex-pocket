@@ -8,9 +8,13 @@ import {
 
 import type {
   CodexHistoryEntry,
+  ComposerAttachment,
+  McpServerStatus,
+  ModelOption,
   SessionRecord,
   SessionStreamMessage,
   SettingsResponse,
+  UpdateSessionPreferencesRequest,
   UpdateSettingsRequest,
   WorkspaceBrowserResponse,
 } from "../shared/contracts";
@@ -24,6 +28,9 @@ const FALLBACK_SETTINGS: SettingsResponse = {
   authenticated: false,
   workspacePath: "",
   defaultMode: "default",
+  defaultModel: null,
+  defaultReasoningEffort: null,
+  defaultApprovalPolicy: "never",
   listenUrls: [],
 };
 
@@ -37,6 +44,9 @@ export function App() {
   const [selectedWorkspacePath, setSelectedWorkspacePath] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ShellTab>("chat");
   const [sessionDraft, setSessionDraft] = useState("");
+  const [composerAttachments, setComposerAttachments] = useState<ComposerAttachment[]>([]);
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [mcpStatus, setMcpStatus] = useState<McpServerStatus[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [streamGeneration, setStreamGeneration] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
@@ -80,6 +90,9 @@ export function App() {
           setWorkspaceBrowser(null);
           setActiveSessionId(null);
           setSelectedWorkspacePath(null);
+          setComposerAttachments([]);
+          setModelOptions([]);
+          setMcpStatus([]);
         });
       }
     } catch (caughtError) {
@@ -131,6 +144,34 @@ export function App() {
       setError(caughtError instanceof Error ? caughtError.message : "Failed to refresh the session.");
     }
   });
+
+  const refreshSessionMetadata = useEffectEvent(async (sessionId: string) => {
+    try {
+      const [models, mcp] = await Promise.all([
+        api.listModels(sessionId),
+        api.listMcpStatus(sessionId),
+      ]);
+      startTransition(() => {
+        setModelOptions(models.data);
+        setMcpStatus(mcp.data);
+      });
+    } catch {
+      startTransition(() => {
+        setModelOptions([]);
+        setMcpStatus([]);
+      });
+    }
+  });
+
+  useEffect(() => {
+    if (!authenticated || !currentSession?.id) {
+      setModelOptions([]);
+      setMcpStatus([]);
+      return;
+    }
+
+    void refreshSessionMetadata(currentSession.id);
+  }, [authenticated, currentSession?.id, refreshSessionMetadata]);
 
   useEffect(() => {
     if (!authenticated || !currentSession) {
@@ -244,6 +285,11 @@ export function App() {
       const response = await api.createSession({
         mode: settings.defaultMode,
         workspacePath: targetWorkspace,
+        preferences: {
+          model: settings.defaultModel,
+          reasoningEffort: settings.defaultReasoningEffort,
+          approvalPolicy: settings.defaultApprovalPolicy,
+        },
       });
       applySessionSnapshot(response.session);
       setActiveSessionId(response.session.id);
@@ -272,19 +318,25 @@ export function App() {
   }
 
   async function handleSendMessage() {
-    if (!currentSession || !sessionDraft.trim()) {
+    if (!currentSession || (!sessionDraft.trim() && !composerAttachments.length)) {
       return;
     }
 
     const text = sessionDraft.trim();
+    const attachments = composerAttachments;
     setSessionDraft("");
+    setComposerAttachments([]);
     setError(null);
 
     try {
-      const response = await api.sendMessage(currentSession.id, { text });
+      const response = await api.sendMessage(currentSession.id, {
+        text,
+        attachments,
+      });
       applySessionSnapshot(response.session);
     } catch (caughtError) {
       setSessionDraft(text);
+      setComposerAttachments(attachments);
       setError(caughtError instanceof Error ? caughtError.message : "Message send failed.");
     }
   }
@@ -302,6 +354,44 @@ export function App() {
       applySessionSnapshot(response.session);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Mode update failed.");
+    }
+  }
+
+  async function handleUpdatePreferences(payload: UpdateSessionPreferencesRequest) {
+    if (!currentSession) {
+      return;
+    }
+
+    setError(null);
+    try {
+      const response = await api.updatePreferences(currentSession.id, payload);
+      applySessionSnapshot(response.session);
+      await refreshSessionMetadata(currentSession.id);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error ? caughtError.message : "Preference update failed.",
+      );
+    }
+  }
+
+  async function handleResolveApproval(
+    requestId: string,
+    decision: "accept" | "acceptForSession" | "decline" | "cancel",
+    applyExecPolicyAmendment?: boolean,
+  ) {
+    if (!currentSession) {
+      return;
+    }
+
+    setError(null);
+    try {
+      const response = await api.resolveApproval(currentSession.id, requestId, {
+        decision,
+        applyExecPolicyAmendment,
+      });
+      applySessionSnapshot(response.session);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Approval failed.");
     }
   }
 
@@ -337,6 +427,7 @@ export function App() {
     try {
       await api.logout();
       setSessionDraft("");
+      setComposerAttachments([]);
       setActiveTab("chat");
       await refreshShell();
     } catch (caughtError) {
@@ -359,6 +450,35 @@ export function App() {
         }
 
         await handleSaveSettings({ defaultMode: action.mode });
+        return;
+      case "set-speed":
+        await handleUpdatePreferences({
+          reasoningEffort:
+            action.speed === "fast"
+              ? "minimal"
+              : action.speed === "deep"
+                ? "high"
+                : "medium",
+        });
+        return;
+      case "set-approval":
+        if (currentSession) {
+          await handleUpdatePreferences({ approvalPolicy: action.approvalPolicy });
+          return;
+        }
+
+        await handleSaveSettings({ defaultApprovalPolicy: action.approvalPolicy });
+        return;
+      case "set-reasoning":
+        await handleUpdatePreferences({ reasoningEffort: action.reasoningEffort });
+        return;
+      case "set-model":
+        if (currentSession) {
+          await handleUpdatePreferences({ model: action.model });
+          return;
+        }
+
+        await handleSaveSettings({ defaultModel: action.model });
         return;
       case "open-tab":
         setActiveTab(action.tab);
@@ -391,6 +511,8 @@ export function App() {
       onSelectWorkspace={handleSelectWorkspace}
       onSendMessage={handleSendMessage}
       onToggleMode={handleToggleMode}
+      onUpdatePreferences={handleUpdatePreferences}
+      onResolveApproval={handleResolveApproval}
       onLogin={handleLogin}
       onSetup={handleSetup}
       historyEntries={historyEntries}
@@ -401,9 +523,18 @@ export function App() {
       onQuickAction={handleQuickAction}
       onLogout={handleLogout}
       settings={settings}
+      modelOptions={modelOptions}
+      mcpStatus={mcpStatus}
       authState={authState === "booting" ? "login" : authState}
       sessionDraft={sessionDraft}
+      composerAttachments={composerAttachments}
       onDraftChange={setSessionDraft}
+      onAddAttachments={(attachments) =>
+        setComposerAttachments((current) => [...current, ...attachments])
+      }
+      onRemoveAttachment={(index) =>
+        setComposerAttachments((current) => current.filter((_, currentIndex) => currentIndex !== index))
+      }
       error={error}
       onDismissError={() => setError(null)}
     />

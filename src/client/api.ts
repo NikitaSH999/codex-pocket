@@ -1,13 +1,17 @@
 import type {
   AuthResponse,
+  McpStatusResponse,
+  ModelListResponse,
   CodexHistoryListResponse,
   CreateSessionRequest,
   ImportHistoryRequest,
+  ResolveApprovalRequest,
   SendMessageRequest,
   SessionListResponse,
   SessionResponse,
   SettingsResponse,
   UpdateModeRequest,
+  UpdateSessionPreferencesRequest,
   UpdateSettingsRequest,
   WorkspaceBrowserResponse,
 } from "../shared/contracts";
@@ -75,6 +79,31 @@ export const api = {
   },
   updateMode(sessionId: string, payload: UpdateModeRequest): Promise<SessionResponse> {
     return requestJson<SessionResponse>(`/api/sessions/${sessionId}/mode`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  updatePreferences(
+    sessionId: string,
+    payload: UpdateSessionPreferencesRequest,
+  ): Promise<SessionResponse> {
+    return requestJson<SessionResponse>(`/api/sessions/${sessionId}/preferences`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  listModels(sessionId: string): Promise<ModelListResponse> {
+    return requestJson<ModelListResponse>(`/api/sessions/${sessionId}/models`);
+  },
+  listMcpStatus(sessionId: string): Promise<McpStatusResponse> {
+    return requestJson<McpStatusResponse>(`/api/sessions/${sessionId}/mcp/status`);
+  },
+  resolveApproval(
+    sessionId: string,
+    requestId: string,
+    payload: ResolveApprovalRequest,
+  ): Promise<SessionResponse> {
+    return requestJson<SessionResponse>(`/api/sessions/${sessionId}/approvals/${encodeURIComponent(requestId)}`, {
       method: "POST",
       body: JSON.stringify(payload),
     });

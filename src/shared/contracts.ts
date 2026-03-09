@@ -2,6 +2,67 @@ export type CollaborationModeKind = "default" | "plan";
 export type SessionStatus = "idle" | "running" | "waiting" | "done" | "error";
 export type MessageRole = "user" | "assistant";
 export type MessageState = "streaming" | "final";
+export type ApprovalPolicy = "untrusted" | "on-failure" | "on-request" | "never";
+export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type SpeedPreset = "fast" | "balanced" | "deep";
+
+export interface SessionPreferences {
+  model: string | null;
+  reasoningEffort: ReasoningEffort | null;
+  approvalPolicy: ApprovalPolicy;
+}
+
+export interface ModelOption {
+  id: string;
+  model: string;
+  displayName: string;
+  description: string;
+  isDefault: boolean;
+  defaultReasoningEffort: ReasoningEffort;
+  supportedReasoningEfforts: ReasoningEffort[];
+  inputModalities: Array<"text" | "image">;
+}
+
+export interface ModelListResponse {
+  data: ModelOption[];
+}
+
+export interface McpServerStatus {
+  name: string;
+  authStatus: string;
+  toolCount: number;
+  resourceCount: number;
+  resourceTemplateCount: number;
+}
+
+export interface McpStatusResponse {
+  data: McpServerStatus[];
+  refreshedAt: number;
+}
+
+export interface ComposerAttachment {
+  name: string;
+  mimeType: string;
+  size: number;
+  contentBase64: string;
+}
+
+export interface SessionApproval {
+  id: string;
+  requestId: string;
+  kind: "command" | "fileChange";
+  itemId: string;
+  turnId: string;
+  status: "pending" | "resolved";
+  command?: string;
+  cwd?: string;
+  reason?: string;
+  grantRoot?: string;
+  proposedExecpolicyAmendment?: string[];
+  createdAt: number;
+  updatedAt: number;
+  decision?: "accept" | "acceptForSession" | "decline" | "cancel";
+}
 
 export interface ListenUrl {
   label: string;
@@ -13,6 +74,9 @@ export interface SettingsResponse {
   authenticated?: boolean;
   workspacePath: string;
   defaultMode: CollaborationModeKind;
+  defaultModel: string | null;
+  defaultReasoningEffort: ReasoningEffort | null;
+  defaultApprovalPolicy: ApprovalPolicy;
   listenUrls: ListenUrl[];
   networkAccessMode?: "private" | "public";
 }
@@ -144,12 +208,14 @@ export interface SessionRecord {
   createdAt: number;
   updatedAt: number;
   mode: CollaborationModeKind;
+  preferences: SessionPreferences;
   status: SessionStatus;
   messages: SessionMessage[];
   activity: ActivityItem[];
   commands: CommandRecord[];
   tools: ToolRecord[];
   planBlocks: PlanBlock[];
+  approvals: SessionApproval[];
 }
 
 export interface SessionListResponse {
@@ -164,10 +230,12 @@ export interface CreateSessionRequest {
   title?: string;
   mode?: CollaborationModeKind;
   workspacePath?: string;
+  preferences?: Partial<SessionPreferences>;
 }
 
 export interface SendMessageRequest {
   text: string;
+  attachments?: ComposerAttachment[];
 }
 
 export interface UpdateModeRequest {
@@ -177,6 +245,20 @@ export interface UpdateModeRequest {
 export interface UpdateSettingsRequest {
   workspacePath?: string;
   defaultMode?: CollaborationModeKind;
+  defaultModel?: string | null;
+  defaultReasoningEffort?: ReasoningEffort | null;
+  defaultApprovalPolicy?: ApprovalPolicy;
+}
+
+export interface UpdateSessionPreferencesRequest {
+  model?: string | null;
+  reasoningEffort?: ReasoningEffort | null;
+  approvalPolicy?: ApprovalPolicy;
+}
+
+export interface ResolveApprovalRequest {
+  decision: "accept" | "acceptForSession" | "decline" | "cancel";
+  applyExecPolicyAmendment?: boolean;
 }
 
 export interface ImportHistoryRequest {
@@ -242,6 +324,15 @@ export type SessionEvent =
       text: string;
     }
   | {
+      type: "approval_requested";
+      approval: SessionApproval;
+    }
+  | {
+      type: "approval_resolved";
+      requestId: string;
+      decision: "accept" | "acceptForSession" | "decline" | "cancel";
+    }
+  | {
       type: "session_state_changed";
       turnId: string;
       status: SessionStatus;
@@ -272,6 +363,9 @@ export interface PersistedState {
   settings: {
     workspacePath: string;
     defaultMode: CollaborationModeKind;
+    defaultModel: string | null;
+    defaultReasoningEffort: ReasoningEffort | null;
+    defaultApprovalPolicy: ApprovalPolicy;
   };
   sessions: Record<string, SessionRecord>;
 }

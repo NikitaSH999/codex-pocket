@@ -18,6 +18,10 @@ export class JsonStore {
     this.filePath = path.join(options.dataDir, DEFAULT_STATE_FILE);
   }
 
+  get dataDir(): string {
+    return this.options.dataDir;
+  }
+
   async read(): Promise<PersistedState> {
     if (!this.statePromise) {
       this.statePromise = this.load();
@@ -49,8 +53,30 @@ export class JsonStore {
         settings: {
           workspacePath: parsed.settings?.workspacePath ?? this.options.workspacePath,
           defaultMode: parsed.settings?.defaultMode ?? "default",
+          defaultModel: parsed.settings?.defaultModel ?? null,
+          defaultReasoningEffort: parsed.settings?.defaultReasoningEffort ?? null,
+          defaultApprovalPolicy: parsed.settings?.defaultApprovalPolicy ?? "never",
         },
-        sessions: parsed.sessions ?? {},
+        sessions: Object.fromEntries(
+          Object.entries(parsed.sessions ?? {}).map(([sessionId, session]) => [
+            sessionId,
+            {
+              ...session,
+              preferences: {
+                model: session.preferences?.model ?? parsed.settings?.defaultModel ?? null,
+                reasoningEffort:
+                  session.preferences?.reasoningEffort ??
+                  parsed.settings?.defaultReasoningEffort ??
+                  null,
+                approvalPolicy:
+                  session.preferences?.approvalPolicy ??
+                  parsed.settings?.defaultApprovalPolicy ??
+                  "never",
+              },
+              approvals: session.approvals ?? [],
+            },
+          ]),
+        ),
       };
     } catch {
       const state = createInitialState(this.options.workspacePath);
@@ -69,6 +95,9 @@ function createInitialState(workspacePath: string): PersistedState {
     settings: {
       workspacePath,
       defaultMode: "default",
+      defaultModel: null,
+      defaultReasoningEffort: null,
+      defaultApprovalPolicy: "never",
     },
     sessions: {},
   };

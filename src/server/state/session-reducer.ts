@@ -5,8 +5,10 @@ import type {
   CollaborationModeKind,
   CommandRecord,
   PlanBlock,
+  SessionApproval,
   SessionEvent,
   SessionMessage,
+  SessionPreferences,
   SessionRecord,
   ToolRecord,
 } from "../../shared/contracts";
@@ -16,6 +18,7 @@ interface SessionSeed {
   threadId: string;
   cwd: string;
   mode: CollaborationModeKind;
+  preferences: SessionPreferences;
   title?: string;
 }
 
@@ -30,12 +33,14 @@ export function createSessionRecord(seed: SessionSeed): SessionRecord {
     createdAt: now,
     updatedAt: now,
     mode: seed.mode,
+    preferences: seed.preferences,
     status: "idle",
     messages: [],
     activity: [],
     commands: [],
     tools: [],
     planBlocks: [],
+    approvals: [],
   };
 }
 
@@ -50,6 +55,7 @@ export function reduceSessionEvent(
     commands: [...session.commands],
     tools: [...session.tools],
     planBlocks: [...session.planBlocks],
+    approvals: [...session.approvals],
     updatedAt: Date.now(),
   };
 
@@ -166,6 +172,39 @@ export function reduceSessionEvent(
       });
       break;
     }
+    case "approval_requested": {
+      upsertApproval(next.approvals, event.approval);
+      next.status = "waiting";
+      next.activity.unshift({
+        id: nanoid(),
+        type: "status_update",
+        turnId: event.approval.turnId,
+        status: "waiting",
+        createdAt: Date.now(),
+        detail:
+          event.approval.kind === "command"
+            ? `Approval needed: ${event.approval.command ?? "command"}`
+            : `Approval needed for file changes${event.approval.grantRoot ? ` in ${event.approval.grantRoot}` : ""}`,
+      });
+      break;
+    }
+    case "approval_resolved": {
+      const approval = next.approvals.find((item) => item.requestId === event.requestId);
+      if (approval) {
+        approval.status = "resolved";
+        approval.updatedAt = Date.now();
+        approval.decision = event.decision;
+      }
+      next.activity.unshift({
+        id: nanoid(),
+        type: "status_update",
+        turnId: approval?.turnId ?? "turn",
+        status: "running",
+        createdAt: Date.now(),
+        detail: `Approval ${event.decision}`,
+      });
+      break;
+    }
   }
 
   if (next.title === "Новая сессия") {
@@ -260,4 +299,14 @@ function patchActivity(
   if (entry) {
     Object.assign(entry, patch);
   }
+}
+
+function upsertApproval(approvals: SessionApproval[], next: SessionApproval): void {
+  const existing = approvals.find((approval) => approval.requestId === next.requestId);
+  if (existing) {
+    Object.assign(existing, next, { updatedAt: Date.now() });
+    return;
+  }
+
+  approvals.unshift(next);
 }

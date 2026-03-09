@@ -1,11 +1,25 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+} from "react";
 
 import type {
   ActivityItem,
+  ApprovalPolicy,
   CodexHistoryEntry,
+  ComposerAttachment,
+  McpServerStatus,
+  ModelOption,
+  ReasoningEffort,
   SessionMessage,
   SessionRecord,
   SettingsResponse,
+  SpeedPreset,
+  UpdateSessionPreferencesRequest,
   UpdateSettingsRequest,
   WorkspaceBrowserResponse,
 } from "../../shared/contracts";
@@ -14,6 +28,10 @@ export type ShellTab = "chat" | "activity" | "sessions" | "settings";
 export type ShellAuthState = "setup" | "login" | "ready" | "busy";
 export type ShellQuickAction =
   | { kind: "set-mode"; mode: "default" | "plan" }
+  | { kind: "set-speed"; speed: SpeedPreset }
+  | { kind: "set-approval"; approvalPolicy: ApprovalPolicy }
+  | { kind: "set-reasoning"; reasoningEffort: ReasoningEffort | null }
+  | { kind: "set-model"; model: string | null }
   | { kind: "open-tab"; tab: ShellTab }
   | { kind: "select-workspace"; workspacePath: string }
   | { kind: "create-session"; workspacePath: string };
@@ -30,6 +48,12 @@ interface AppShellProps {
   onSelectWorkspace: (workspacePath: string) => void;
   onSendMessage: () => void;
   onToggleMode: (checked: boolean) => void;
+  onUpdatePreferences: (payload: UpdateSessionPreferencesRequest) => Promise<void> | void;
+  onResolveApproval: (
+    requestId: string,
+    decision: "accept" | "acceptForSession" | "decline" | "cancel",
+    applyExecPolicyAmendment?: boolean,
+  ) => Promise<void> | void;
   onLogin: (pin: string) => void;
   onSetup: (pin: string) => void;
   historyEntries: CodexHistoryEntry[];
@@ -40,9 +64,14 @@ interface AppShellProps {
   onQuickAction: (action: ShellQuickAction) => Promise<void> | void;
   onLogout: () => Promise<void> | void;
   settings: SettingsResponse;
+  modelOptions: ModelOption[];
+  mcpStatus: McpServerStatus[];
   authState: ShellAuthState;
   sessionDraft: string;
+  composerAttachments: ComposerAttachment[];
   onDraftChange: (value: string) => void;
+  onAddAttachments: (attachments: ComposerAttachment[]) => void;
+  onRemoveAttachment: (index: number) => void;
   error?: string | null;
   onDismissError?: () => void;
 }
@@ -75,6 +104,8 @@ export function AppShell({
   onSelectWorkspace,
   onSendMessage,
   onToggleMode,
+  onUpdatePreferences,
+  onResolveApproval,
   onLogin,
   onSetup,
   historyEntries,
@@ -85,21 +116,43 @@ export function AppShell({
   onQuickAction,
   onLogout,
   settings,
+  modelOptions,
+  mcpStatus,
   authState,
   sessionDraft,
+  composerAttachments,
   onDraftChange,
+  onAddAttachments,
+  onRemoveAttachment,
   error = null,
   onDismissError,
 }: AppShellProps) {
   const [pin, setPin] = useState("");
   const [workspaceDraft, setWorkspaceDraft] = useState(settings.workspacePath);
   const [defaultModeDraft, setDefaultModeDraft] = useState(settings.defaultMode);
+  const [defaultModelDraft, setDefaultModelDraft] = useState(settings.defaultModel ?? "");
+  const [defaultReasoningDraft, setDefaultReasoningDraft] = useState(
+    settings.defaultReasoningEffort ?? "",
+  );
+  const [defaultApprovalDraft, setDefaultApprovalDraft] = useState(
+    settings.defaultApprovalPolicy,
+  );
   const [quickMenuOpen, setQuickMenuOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setWorkspaceDraft(settings.workspacePath);
     setDefaultModeDraft(settings.defaultMode);
-  }, [settings.defaultMode, settings.workspacePath]);
+    setDefaultModelDraft(settings.defaultModel ?? "");
+    setDefaultReasoningDraft(settings.defaultReasoningEffort ?? "");
+    setDefaultApprovalDraft(settings.defaultApprovalPolicy);
+  }, [
+    settings.defaultApprovalPolicy,
+    settings.defaultMode,
+    settings.defaultModel,
+    settings.defaultReasoningEffort,
+    settings.workspacePath,
+  ]);
 
   const workspaceGroups = useMemo(
     () =>
@@ -115,10 +168,19 @@ export function AppShell({
   const activeWorkspacePath = currentSession?.cwd ?? selectedWorkspacePath ?? settings.workspacePath;
   const activeWorkspaceLabel = formatWorkspaceLabel(activeWorkspacePath);
   const visibleActivity = currentSession?.activity ?? [];
+  const pendingApprovals = currentSession?.approvals.filter((item) => item.status === "pending") ?? [];
   const slashQuery = getSlashQuery(sessionDraft);
+  const currentSpeed = speedPresetFromReasoning(currentSession?.preferences.reasoningEffort ?? null);
   const quickActions = useMemo(
-    () => buildQuickActions(currentSession, activeWorkspacePath, workspaceGroups),
-    [activeWorkspacePath, currentSession, workspaceGroups],
+    () =>
+      buildQuickActions(
+        currentSession,
+        activeWorkspacePath,
+        workspaceGroups,
+        currentSpeed,
+        modelOptions,
+      ),
+    [activeWorkspacePath, currentSession, currentSpeed, modelOptions, workspaceGroups],
   );
   const visibleQuickActions = useMemo(() => {
     if (slashQuery === null) {
@@ -135,6 +197,17 @@ export function AppShell({
     await onQuickAction(action);
     setQuickMenuOpen(false);
     onDraftChange("");
+  }
+
+  async function handleFilePick(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const files = [...(event.target.files ?? [])];
+    if (!files.length) {
+      return;
+    }
+
+    const attachments = await Promise.all(files.map(fileToAttachment));
+    onAddAttachments(attachments);
+    event.target.value = "";
   }
 
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
@@ -159,7 +232,7 @@ export function AppShell({
       !event.shiftKey &&
       slashQuery === null &&
       currentSession &&
-      sessionDraft.trim()
+      (sessionDraft.trim() || composerAttachments.length)
     ) {
       event.preventDefault();
       onSendMessage();
@@ -275,6 +348,12 @@ export function AppShell({
                 {currentSession?.status ?? "ready"}
               </span>
               <span className="meta-pill">{currentSession?.mode === "plan" ? "plan mode" : "default mode"}</span>
+              <span className="meta-pill">{`${currentSpeed} speed`}</span>
+              <span className="meta-pill">
+                {formatApprovalLabel(
+                  currentSession?.preferences.approvalPolicy ?? settings.defaultApprovalPolicy,
+                )}
+              </span>
               <span className="meta-pill">{`${workspaceGroups.length} workspaces`}</span>
             </div>
           </div>
@@ -331,6 +410,17 @@ export function AppShell({
               <h3>Chat</h3>
               <span>{currentSession?.status ?? "ready"}</span>
             </div>
+            {pendingApprovals.length ? (
+              <div className="approval-stack">
+                {pendingApprovals.map((approval) => (
+                  <ApprovalCard
+                    approval={approval}
+                    key={approval.requestId}
+                    onResolve={onResolveApproval}
+                  />
+                ))}
+              </div>
+            ) : null}
             <div className="message-list">
               {(currentSession?.messages ?? []).map((message) => (
                 <MessageBubble key={message.itemId} message={message} />
@@ -354,6 +444,28 @@ export function AppShell({
                 onKeyDown={handleComposerKeyDown}
                 onChange={(event) => onDraftChange(event.target.value)}
               />
+              {composerAttachments.length ? (
+                <div className="attachment-list">
+                  {composerAttachments.map((attachment, index) => (
+                    <article
+                      className="attachment-chip"
+                      key={`${attachment.name}-${attachment.size}-${index}`}
+                    >
+                      <div>
+                        <strong>{attachment.name}</strong>
+                        <span>{formatBytes(attachment.size)}</span>
+                      </div>
+                      <button
+                        aria-label={`Remove ${attachment.name}`}
+                        type="button"
+                        onClick={() => onRemoveAttachment(index)}
+                      >
+                        Remove
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
               {slashQuery !== null ? (
                 <div className="slash-menu" role="menu" aria-label="Slash commands">
                   {visibleQuickActions.length ? (
@@ -370,16 +482,36 @@ export function AppShell({
               ) : null}
               <div className="composer__footer">
                 <span className="composer__hint">
-                  {`/ for quick actions, Ctrl+Enter to send, workspace: ${activeWorkspaceLabel}`}
+                  {`/ for commands, Ctrl+Enter to send, workspace: ${activeWorkspaceLabel}`}
                 </span>
-                <button
-                  className="primary-button"
-                  disabled={!currentSession || !sessionDraft.trim() || slashQuery !== null}
-                  type="button"
-                  onClick={onSendMessage}
-                >
-                  Send
-                </button>
+                <div className="composer__actions">
+                  <input
+                    hidden
+                    multiple
+                    ref={fileInputRef}
+                    type="file"
+                    onChange={(event) => void handleFilePick(event)}
+                  />
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    Attach files
+                  </button>
+                  <button
+                    className="primary-button"
+                    disabled={
+                      !currentSession ||
+                      (!sessionDraft.trim() && composerAttachments.length === 0) ||
+                      slashQuery !== null
+                    }
+                    type="button"
+                    onClick={onSendMessage}
+                  >
+                    Send
+                  </button>
+                </div>
               </div>
             </div>
           </section>
@@ -388,6 +520,21 @@ export function AppShell({
             <div className="panel__header">
               <h3>Activity</h3>
               <span>{visibleActivity.length}</span>
+            </div>
+            <div className="mcp-grid">
+              {mcpStatus.length ? (
+                mcpStatus.map((server) => (
+                  <article className="mcp-card" key={server.name}>
+                    <header>
+                      <strong>{server.name}</strong>
+                      <span>{server.authStatus}</span>
+                    </header>
+                    <p>{`${server.toolCount} tools · ${server.resourceCount} resources · ${server.resourceTemplateCount} templates`}</p>
+                  </article>
+                ))
+              ) : (
+                <div className="empty-inline">Open a session to load MCP server status.</div>
+              )}
             </div>
             <div className="activity-list">
               {visibleActivity.map((item) => (
@@ -450,6 +597,86 @@ export function AppShell({
               <span>Single-user local config</span>
             </div>
             <div className="settings-form">
+              <div className="settings-card">
+                <div className="settings-card__header">
+                  <strong>Session controls</strong>
+                  <span>Model, speed, reasoning and approval for the current thread.</span>
+                </div>
+                {currentSession ? (
+                  <div className="settings-card__stack">
+                    <label className="field">
+                      <span>Model</span>
+                      <select
+                        value={currentSession.preferences.model ?? ""}
+                        onChange={(event) =>
+                          void onUpdatePreferences({ model: event.target.value || null })
+                        }
+                      >
+                        <option value="">session default</option>
+                        {modelOptions.map((model) => (
+                          <option key={model.id} value={model.model}>
+                            {model.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="segment-row">
+                      {(["fast", "balanced", "deep"] as SpeedPreset[]).map((speed) => (
+                        <button
+                          className={
+                            currentSpeed === speed
+                              ? "secondary-button segment-button segment-button--active"
+                              : "secondary-button segment-button"
+                          }
+                          key={speed}
+                          type="button"
+                          onClick={() => void onQuickAction({ kind: "set-speed", speed })}
+                        >
+                          {speed}
+                        </button>
+                      ))}
+                    </div>
+                    <label className="field">
+                      <span>Reasoning effort</span>
+                      <select
+                        value={currentSession.preferences.reasoningEffort ?? ""}
+                        onChange={(event) =>
+                          void onUpdatePreferences({
+                            reasoningEffort: (event.target.value || null) as ReasoningEffort | null,
+                          })
+                        }
+                      >
+                        <option value="">session default</option>
+                        {collectReasoningOptions(modelOptions, currentSession.preferences.model).map(
+                          (effort) => (
+                            <option key={effort} value={effort}>
+                              {effort}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>Approval policy</span>
+                      <select
+                        value={currentSession.preferences.approvalPolicy}
+                        onChange={(event) =>
+                          void onUpdatePreferences({
+                            approvalPolicy: event.target.value as ApprovalPolicy,
+                          })
+                        }
+                      >
+                        <option value="never">never</option>
+                        <option value="on-request">on-request</option>
+                        <option value="untrusted">untrusted</option>
+                        <option value="on-failure">on-failure</option>
+                      </select>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="empty-inline">Create or open a session to configure live controls.</div>
+                )}
+              </div>
               <div className="settings-card">
                 <div className="settings-card__header">
                   <strong>Quick deck</strong>
@@ -529,10 +756,58 @@ export function AppShell({
                   <option value="plan">structured preset</option>
                 </select>
               </label>
+              <label className="field">
+                <span>Default model</span>
+                <select
+                  value={defaultModelDraft}
+                  onChange={(event) => setDefaultModelDraft(event.target.value)}
+                >
+                  <option value="">session default</option>
+                  {modelOptions.map((model) => (
+                    <option key={model.id} value={model.model}>
+                      {model.displayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Default reasoning</span>
+                <select
+                  value={defaultReasoningDraft}
+                  onChange={(event) => setDefaultReasoningDraft(event.target.value)}
+                >
+                  <option value="">balanced</option>
+                  {collectReasoningOptions(modelOptions, defaultModelDraft || null).map((effort) => (
+                    <option key={effort} value={effort}>
+                      {effort}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Default approval</span>
+                <select
+                  value={defaultApprovalDraft}
+                  onChange={(event) => setDefaultApprovalDraft(event.target.value as ApprovalPolicy)}
+                >
+                  <option value="never">never</option>
+                  <option value="on-request">on-request</option>
+                  <option value="untrusted">untrusted</option>
+                  <option value="on-failure">on-failure</option>
+                </select>
+              </label>
               <button
                 className="primary-button"
                 type="button"
-                onClick={() => onSaveSettings({ workspacePath: workspaceDraft, defaultMode: defaultModeDraft })}
+                onClick={() =>
+                  onSaveSettings({
+                    workspacePath: workspaceDraft,
+                    defaultMode: defaultModeDraft,
+                    defaultModel: defaultModelDraft || null,
+                    defaultReasoningEffort: (defaultReasoningDraft || null) as ReasoningEffort | null,
+                    defaultApprovalPolicy: defaultApprovalDraft,
+                  })
+                }
               >
                 Save settings
               </button>
@@ -557,6 +832,70 @@ export function AppShell({
         </nav>
       </main>
     </div>
+  );
+}
+
+function ApprovalCard({
+  approval,
+  onResolve,
+}: {
+  approval: SessionRecord["approvals"][number];
+  onResolve: (
+    requestId: string,
+    decision: "accept" | "acceptForSession" | "decline" | "cancel",
+    applyExecPolicyAmendment?: boolean,
+  ) => Promise<void> | void;
+}) {
+  return (
+    <article className="approval-card">
+      <header>
+        <strong>{approval.kind === "command" ? "Approval required" : "File change approval"}</strong>
+        <span>{approval.kind}</span>
+      </header>
+      {approval.command ? <p>{approval.command}</p> : null}
+      {approval.reason ? <p>{approval.reason}</p> : null}
+      {approval.cwd ? <span>{approval.cwd}</span> : null}
+      {approval.grantRoot ? <span>{approval.grantRoot}</span> : null}
+      <div className="approval-card__actions">
+        <button
+          className="primary-button"
+          type="button"
+          onClick={() => void onResolve(approval.requestId, "accept")}
+        >
+          Accept
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => void onResolve(approval.requestId, "acceptForSession")}
+        >
+          Accept for session
+        </button>
+        {approval.kind === "command" && approval.proposedExecpolicyAmendment?.length ? (
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => void onResolve(approval.requestId, "accept", true)}
+          >
+            Accept + policy
+          </button>
+        ) : null}
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => void onResolve(approval.requestId, "decline")}
+        >
+          Decline
+        </button>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => void onResolve(approval.requestId, "cancel")}
+        >
+          Cancel turn
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -835,6 +1174,8 @@ function buildQuickActions(
   currentSession: SessionRecord | null,
   activeWorkspacePath: string,
   workspaceGroups: WorkspaceGroup[],
+  currentSpeed: SpeedPreset,
+  modelOptions: ModelOption[],
 ): QuickActionOption[] {
   const actions: QuickActionOption[] = [
     {
@@ -854,6 +1195,45 @@ function buildQuickActions(
           ? "Use the standard implementation flow."
           : "Switch the active session back to implementation mode.",
       action: { kind: "set-mode", mode: "default" },
+    },
+    {
+      id: "speed-fast",
+      label: "Speed fast",
+      description:
+        currentSpeed === "fast"
+          ? "Current session is optimized for quick turns."
+          : "Prefer faster turns with lighter reasoning.",
+      action: { kind: "set-speed", speed: "fast" },
+    },
+    {
+      id: "speed-balanced",
+      label: "Speed balanced",
+      description:
+        currentSpeed === "balanced"
+          ? "Current session uses balanced reasoning."
+          : "Use the default balance between speed and depth.",
+      action: { kind: "set-speed", speed: "balanced" },
+    },
+    {
+      id: "speed-deep",
+      label: "Speed deep",
+      description:
+        currentSpeed === "deep"
+          ? "Current session is already in deep mode."
+          : "Spend more reasoning budget on harder turns.",
+      action: { kind: "set-speed", speed: "deep" },
+    },
+    {
+      id: "approval-on-request",
+      label: "Approval on-request",
+      description: "Let Codex ask before risky commands and edits.",
+      action: { kind: "set-approval", approvalPolicy: "on-request" },
+    },
+    {
+      id: "approval-never",
+      label: "Approval never",
+      description: "Keep the current fully automatic flow.",
+      action: { kind: "set-approval", approvalPolicy: "never" },
     },
     {
       id: "tab-activity",
@@ -881,6 +1261,15 @@ function buildQuickActions(
     },
   ];
 
+  for (const model of modelOptions.slice(0, 5)) {
+    actions.push({
+      id: `model-${model.id}`,
+      label: `Model ${model.displayName}`,
+      description: model.description,
+      action: { kind: "set-model", model: model.model },
+    });
+  }
+
   for (const group of workspaceGroups) {
     actions.push({
       id: `workspace-${group.path}`,
@@ -891,4 +1280,63 @@ function buildQuickActions(
   }
 
   return actions;
+}
+
+function speedPresetFromReasoning(reasoningEffort: ReasoningEffort | null): SpeedPreset {
+  switch (reasoningEffort) {
+    case "none":
+    case "minimal":
+    case "low":
+      return "fast";
+    case "high":
+    case "xhigh":
+      return "deep";
+    default:
+      return "balanced";
+  }
+}
+
+function collectReasoningOptions(
+  modelOptions: ModelOption[],
+  model: string | null,
+): ReasoningEffort[] {
+  const selected = modelOptions.find((entry) => entry.model === model);
+  if (selected?.supportedReasoningEfforts.length) {
+    return selected.supportedReasoningEfforts;
+  }
+
+  return ["minimal", "low", "medium", "high", "xhigh"];
+}
+
+function formatApprovalLabel(approvalPolicy: ApprovalPolicy): string {
+  return approvalPolicy.replace("-", " ");
+}
+
+async function fileToAttachment(file: File): Promise<ComposerAttachment> {
+  const buffer = await file.arrayBuffer();
+  return {
+    name: file.name,
+    mimeType: file.type || "application/octet-stream",
+    size: file.size,
+    contentBase64: arrayBufferToBase64(buffer),
+  };
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${Math.round(bytes / 102.4) / 10} KB`;
+  }
+  return `${Math.round(bytes / 104857.6) / 10} MB`;
 }
