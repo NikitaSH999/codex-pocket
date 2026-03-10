@@ -160,7 +160,7 @@ codex-pocket-remote.bat
 > 💀 Мемы, которые поймут только разработчики  
 > 🎯 Баунти и возможности
 >
-> 👉 **[t.me/sioloshna](https://t.me/sioloshna)**
+> 👉 **[t.me/seeallochnaya](https://t.me/seeallochnaya)**
 
 ---
 

@@ -341,7 +341,7 @@ export function AppShell({
             </a>
           </div>
           <div className="promo-links">
-            <a href="https://t.me/sioloshna" target="_blank" rel="noopener noreferrer">
+            <a href="https://t.me/seeallochnaya" target="_blank" rel="noopener noreferrer">
               📢 Сиолошная
             </a>
             <span>·</span>
