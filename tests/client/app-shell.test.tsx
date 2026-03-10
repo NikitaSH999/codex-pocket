@@ -102,10 +102,10 @@ describe("AppShell", () => {
   it("renders mobile navigation, plan toggle, and activity feed summary", () => {
     renderShell();
 
-    expect(screen.getByRole("button", { name: /chat/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /activity/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /chat/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /activity/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /settings/i }).length).toBeGreaterThan(0);
     expect(screen.getByRole("checkbox", { name: /plan mode/i })).toBeChecked();
-    expect(screen.getByText(/^LAN$/)).toBeInTheDocument();
     expect(screen.getAllByText(/session draft/i).length).toBeGreaterThan(0);
   });
 
@@ -287,6 +287,18 @@ describe("AppShell", () => {
     expect(screen.getByText("repo://{branch}")).toBeInTheDocument();
   });
 
+  it("renders the VPN promo widget with a visible CTA", () => {
+    renderShell({
+      activeTab: "settings",
+    });
+
+    expect(screen.getByText(/professional connection shield/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /connect free usa vpn/i })).toHaveAttribute(
+      "href",
+      "https://t.me/portal_service_bot",
+    );
+  });
+
   it("sends a message with ctrl enter from the composer", () => {
     const onSendMessage = vi.fn();
 
@@ -296,13 +308,29 @@ describe("AppShell", () => {
     });
 
     fireEvent.keyDown(
-      screen.getByPlaceholderText(/send a task, ask for a plan/i),
+      screen.getByPlaceholderText(/ask codex anything/i),
       {
-      key: "Enter",
-      code: "Enter",
-      ctrlKey: true,
+        key: "Enter",
+        code: "Enter",
+        ctrlKey: true,
       },
     );
+
+    expect(onSendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends a message with enter when the composer is not in slash mode", () => {
+    const onSendMessage = vi.fn();
+
+    renderShell({
+      sessionDraft: "ship it faster",
+      onSendMessage,
+    });
+
+    fireEvent.keyDown(screen.getByPlaceholderText(/ask codex anything/i), {
+      key: "Enter",
+      code: "Enter",
+    });
 
     expect(onSendMessage).toHaveBeenCalledTimes(1);
   });
@@ -316,10 +344,10 @@ describe("AppShell", () => {
     });
 
     fireEvent.keyDown(
-      screen.getByPlaceholderText(/send a task, ask for a plan/i),
+      screen.getByPlaceholderText(/ask codex anything/i),
       {
-      key: "Enter",
-      code: "Enter",
+        key: "Enter",
+        code: "Enter",
       },
     );
 

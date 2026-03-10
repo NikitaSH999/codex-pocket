@@ -6,6 +6,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
+import portalShieldLogo from "../assets/portal-shield-logo.svg";
 
 import type {
   ActivityItem,
@@ -94,6 +95,23 @@ interface QuickActionOption {
   action: ShellQuickAction;
 }
 
+type ConversationTimelineItem =
+  | { key: string; createdAt: number; kind: "message"; message: SessionMessage }
+  | { key: string; createdAt: number; kind: "activity"; activity: ActivityItem }
+  | {
+    key: string;
+    createdAt: number;
+    kind: "command";
+    command: SessionRecord["commands"][number];
+  }
+  | {
+    key: string;
+    createdAt: number;
+    kind: "approval";
+    approval: SessionRecord["approvals"][number];
+  }
+  | { key: string; createdAt: number; kind: "plan"; plan: SessionRecord["planBlocks"][number] };
+
 export function AppShell({
   authenticated,
   currentSession,
@@ -142,6 +160,7 @@ export function AppShell({
   );
   const [quickMenuOpen, setQuickMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messageListRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setWorkspaceDraft(settings.workspacePath);
@@ -170,10 +189,15 @@ export function AppShell({
   );
   const activeWorkspacePath = currentSession?.cwd ?? selectedWorkspacePath ?? settings.workspacePath;
   const activeWorkspaceLabel = formatWorkspaceLabel(activeWorkspacePath);
+  const desktopInspectorTab = activeTab === "chat" ? null : activeTab;
   const visibleActivity = currentSession?.activity ?? [];
   const pendingApprovals = currentSession?.approvals.filter((item) => item.status === "pending") ?? [];
   const slashQuery = getSlashQuery(sessionDraft);
   const currentSpeed = speedPresetFromReasoning(currentSession?.preferences.reasoningEffort ?? null);
+  const conversationFeed = useMemo(
+    () => buildConversationFeed(currentSession),
+    [currentSession],
+  );
   const quickActions = useMemo(
     () =>
       buildQuickActions(
@@ -195,6 +219,23 @@ export function AppShell({
       `${action.label} ${action.description}`.toLowerCase().includes(query),
     );
   }, [quickActions, slashQuery]);
+
+  useEffect(() => {
+    const container = messageListRef.current;
+    if (!container) {
+      return;
+    }
+
+    if (typeof container.scrollTo === "function") {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: "smooth",
+      });
+      return;
+    }
+
+    container.scrollTop = container.scrollHeight;
+  }, [currentSession?.id, currentSession?.messages, pendingApprovals.length]);
 
   async function runQuickAction(action: ShellQuickAction): Promise<void> {
     await onQuickAction(action);
@@ -231,7 +272,6 @@ export function AppShell({
 
     if (
       event.key === "Enter" &&
-      (event.ctrlKey || event.metaKey) &&
       !event.shiftKey &&
       slashQuery === null &&
       currentSession &&
@@ -246,6 +286,7 @@ export function AppShell({
     return (
       <div className="shell shell--auth">
         <div className="auth-card">
+          <img alt="Portal VPN shield" className="app-logo" src={portalShieldLogo} />
           <div className="hero-badge">Codex Switchboard</div>
           <h1>{authState === "setup" ? "Secure this device" : "Unlock your local Codex"}</h1>
           <p>
@@ -289,6 +330,25 @@ export function AppShell({
               </span>
             ))}
           </div>
+          <div className="promo-banner">
+            <div className="promo-banner__shield">🛡️</div>
+            <div className="promo-banner__content">
+              <strong>Защити своё соединение</strong>
+              <span>USA-локации · Безлимит · Бесплатно</span>
+            </div>
+            <a className="promo-banner__cta" href="https://t.me/portal_service_bot" target="_blank" rel="noopener noreferrer">
+              Подключить ⚡
+            </a>
+          </div>
+          <div className="promo-links">
+            <a href="https://t.me/sioloshna" target="_blank" rel="noopener noreferrer">
+              📢 Сиолошная
+            </a>
+            <span>·</span>
+            <a href="https://t.me/portal_service_bot" target="_blank" rel="noopener noreferrer">
+              🚀 Portal VPN
+            </a>
+          </div>
         </div>
       </div>
     );
@@ -296,32 +356,83 @@ export function AppShell({
 
   return (
     <div className="shell">
+      <aside className="primary-nav" aria-label="Primary">
+        <div className="primary-nav__top">
+          <button className="primary-nav__brand" type="button" onClick={() => onTabChange("chat")}>
+            <img alt="Portal VPN shield" className="primary-nav__logo" src={portalShieldLogo} />
+          </button>
+          <button
+            aria-label="New session"
+            className="primary-nav__button"
+            type="button"
+            onClick={() => onCreateSession(activeWorkspacePath)}
+          >
+            +
+          </button>
+          <button
+            aria-label="Chat tab"
+            className={activeTab === "chat" ? "primary-nav__button primary-nav__button--active" : "primary-nav__button"}
+            type="button"
+            onClick={() => onTabChange("chat")}
+          >
+            <span className="primary-nav__glyph primary-nav__glyph--chat" />
+          </button>
+          <button
+            aria-label="Activity tab"
+            className={activeTab === "activity" ? "primary-nav__button primary-nav__button--active" : "primary-nav__button"}
+            type="button"
+            onClick={() => onTabChange("activity")}
+          >
+            <span className="primary-nav__glyph primary-nav__glyph--activity" />
+          </button>
+          <button
+            aria-label="Sessions tab"
+            className={activeTab === "sessions" ? "primary-nav__button primary-nav__button--active" : "primary-nav__button"}
+            type="button"
+            onClick={() => onTabChange("sessions")}
+          >
+            <span className="primary-nav__glyph primary-nav__glyph--sessions" />
+          </button>
+        </div>
+        <button
+          aria-label="Settings tab"
+          className={activeTab === "settings" ? "primary-nav__button primary-nav__button--active" : "primary-nav__button"}
+          type="button"
+          onClick={() => onTabChange("settings")}
+        >
+          <span className="primary-nav__glyph primary-nav__glyph--settings" />
+        </button>
+        <a className="primary-nav__promo" href="https://t.me/sioloshna" target="_blank" rel="noopener noreferrer" title="Сиолошная">
+          <span className="primary-nav__glyph primary-nav__glyph--tg" />
+        </a>
+      </aside>
       <aside className="rail">
         <div className="rail__header">
           <div>
-            <div className="hero-badge">LAN / Static IP</div>
-            <h1>Codex Switchboard</h1>
+            <div className="hero-badge">Codex</div>
+            <h1>Conversations</h1>
           </div>
           <button className="secondary-button" type="button" onClick={() => onCreateSession(activeWorkspacePath)}>
             New
           </button>
         </div>
-        <section className="rail__section">
-          <div className="section-heading">
-            <span>Reachable at</span>
-          </div>
-          <div className="listen-grid">
-            {settings.listenUrls.map((listenUrl) => (
-              <div className="listen-card" key={listenUrl.url}>
-                <span>{listenUrl.label}</span>
-                <strong>{listenUrl.url}</strong>
-              </div>
-            ))}
-          </div>
+        <section className="rail__section rail__section--shortcuts">
+          <button className="rail-link" type="button" onClick={() => onCreateSession(activeWorkspacePath)}>
+            <span className="rail-link__icon">+</span>
+            <span>New conversation</span>
+          </button>
+          <button className="rail-link" type="button" onClick={() => onTabChange("settings")}>
+            <span className="rail-link__icon">/</span>
+            <span>Commands & settings</span>
+          </button>
+          <button className="rail-link" type="button" onClick={() => onTabChange("activity")}>
+            <span className="rail-link__icon">&gt;</span>
+            <span>Terminal & activity</span>
+          </button>
         </section>
-        <section className="rail__section">
+        <section className="rail__section rail__section--projects">
           <div className="section-heading">
-            <span>Workspace board</span>
+            <span>Projects</span>
             <strong>{workspaceGroups.length}</strong>
           </div>
           <div className="workspace-group-list">
@@ -338,31 +449,31 @@ export function AppShell({
             ))}
           </div>
         </section>
+        <div className="rail__footer">
+          <button className="rail-link rail-link--footer" type="button" onClick={() => onTabChange("settings")}>
+            <span className="rail-link__icon">o</span>
+            <span>Settings</span>
+          </button>
+        </div>
       </aside>
 
       <main className="console">
         <header className="console__header">
           <div>
-            <p className="eyebrow">{currentSession ? "Current session" : "Current workspace"}</p>
-            <h2>{currentSession ? compactSessionTitle(currentSession.title) : `${activeWorkspaceLabel} workspace`}</h2>
-            <p className="console__path">{activeWorkspacePath}</p>
+            <p className="eyebrow">{currentSession ? "Thread" : "Workspace"}</p>
+            <h2>{currentSession ? compactSessionTitle(currentSession.title) : "New thread"}</h2>
+            <p className="console__path">{currentSession ? activeWorkspaceLabel : activeWorkspacePath}</p>
             <div className="console__meta">
               <span className={`status-pill status-pill--${currentSession?.status ?? "idle"}`}>
                 {currentSession?.status ?? "ready"}
               </span>
-              <span className="meta-pill">{currentSession?.mode === "plan" ? "plan mode" : "default mode"}</span>
-              <span className="meta-pill">{`${currentSpeed} speed`}</span>
-              <span className="meta-pill">
-                {formatApprovalLabel(
-                  currentSession?.preferences.approvalPolicy ?? settings.defaultApprovalPolicy,
-                )}
-              </span>
+              <span className="meta-pill">{activeWorkspaceLabel}</span>
               <span className="meta-pill">{`${workspaceGroups.length} workspaces`}</span>
             </div>
           </div>
           <div className="console__actions">
             <button className="secondary-button" type="button" onClick={() => onCreateSession(activeWorkspacePath)}>
-              {`New in ${activeWorkspaceLabel}`}
+              New
             </button>
             {currentSession ? (
               <button className="secondary-button" type="button" onClick={onForkSession}>
@@ -376,7 +487,7 @@ export function AppShell({
                 type="button"
                 onClick={() => setQuickMenuOpen((current) => !current)}
               >
-                Quick /
+                /
               </button>
               {quickMenuOpen ? (
                 <div className="quick-menu" role="menu" aria-label="Quick actions">
@@ -390,7 +501,7 @@ export function AppShell({
               ) : null}
             </div>
             <label className="mode-toggle">
-              <span>Structured</span>
+              <span>Plan</span>
               <input
                 aria-label="Plan mode"
                 checked={currentSession?.mode === "plan"}
@@ -412,27 +523,30 @@ export function AppShell({
           </div>
         ) : null}
 
-        <div className="workspace">
+        <div className={`workspace${desktopInspectorTab ? " workspace--with-inspector" : ""}`}>
           <section className={`panel panel--chat${activeTab === "chat" ? " panel--active" : ""}`}>
             <div className="panel__header">
               <h3>Chat</h3>
-              <span>{currentSession?.status ?? "ready"}</span>
+              <span>{currentSession ? currentSession.cwd : activeWorkspacePath}</span>
             </div>
-            {pendingApprovals.length ? (
-              <div className="approval-stack">
-                {pendingApprovals.map((approval) => (
-                  <ApprovalCard
-                    approval={approval}
-                    key={approval.requestId}
-                    onResolve={onResolveApproval}
-                  />
-                ))}
-              </div>
-            ) : null}
-            <div className="message-list">
-              {(currentSession?.messages ?? []).map((message) => (
-                <MessageBubble key={message.itemId} message={message} />
+            <div className="message-list" ref={messageListRef}>
+              {conversationFeed.map((item) => (
+                <ConversationFeedItem
+                  item={item}
+                  key={item.key}
+                  onResolveApproval={onResolveApproval}
+                />
               ))}
+              {currentSession && (currentSession.status === "running" || currentSession.status === "waiting") ? (
+                <div className="typing-indicator">
+                  <div className="typing-indicator__dots">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  {currentSession.status === "waiting" ? "Waiting for approval..." : "Codex is thinking..."}
+                </div>
+              ) : null}
               {!currentSession ? (
                 <div className="empty-state">
                   <div className="empty-state__content">
@@ -447,7 +561,7 @@ export function AppShell({
             </div>
             <div className="composer">
               <textarea
-                placeholder="Send a task, ask for a plan, or continue a local coding session..."
+                placeholder="Ask Codex anything, @ to add files, / for commands"
                 value={sessionDraft}
                 onKeyDown={handleComposerKeyDown}
                 onChange={(event) => onDraftChange(event.target.value)}
@@ -489,9 +603,6 @@ export function AppShell({
                 </div>
               ) : null}
               <div className="composer__footer">
-                <span className="composer__hint">
-                  {`/ for commands, Ctrl+Enter to send, workspace: ${activeWorkspaceLabel}`}
-                </span>
                 <div className="composer__actions">
                   <input
                     hidden
@@ -505,7 +616,7 @@ export function AppShell({
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                   >
-                    Attach files
+                    Attach
                   </button>
                   <button
                     className="primary-button"
@@ -520,6 +631,27 @@ export function AppShell({
                     Send
                   </button>
                 </div>
+                <span className="composer__hint">
+                  {`/ commands · Enter to send · ${activeWorkspaceLabel}`}
+                </span>
+              </div>
+              <div className="composer__mode-tabs">
+                <button
+                  className={currentSession?.mode !== "plan" ? "composer__mode-tab composer__mode-tab--active" : "composer__mode-tab"}
+                  disabled={!currentSession}
+                  type="button"
+                  onClick={() => onToggleMode(false)}
+                >
+                  Local
+                </button>
+                <button
+                  className={currentSession?.mode === "plan" ? "composer__mode-tab composer__mode-tab--active" : "composer__mode-tab"}
+                  disabled={!currentSession}
+                  type="button"
+                  onClick={() => onToggleMode(true)}
+                >
+                  Worktree
+                </button>
               </div>
             </div>
           </section>
@@ -596,7 +728,7 @@ export function AppShell({
 
           <section className={`panel panel--sessions${activeTab === "sessions" ? " panel--active" : ""}`}>
             <div className="panel__header">
-              <h3>Projects</h3>
+              <h3>Sessions</h3>
               <button className="secondary-button" type="button" onClick={() => onCreateSession(activeWorkspacePath)}>
                 {`New in ${activeWorkspaceLabel}`}
               </button>
@@ -849,9 +981,66 @@ export function AppShell({
               <button className="secondary-button" type="button" onClick={() => void onLogout()}>
                 Lock console
               </button>
+              <div className="settings-card">
+                <div className="settings-card__header">
+                  <strong>Network access</strong>
+                  <span>Use these URLs on desktop, phone or static IP routing.</span>
+                </div>
+                <div className="listen-grid">
+                  {settings.listenUrls.map((listenUrl) => (
+                    <div className="listen-card" key={listenUrl.url}>
+                      <span>{listenUrl.label}</span>
+                      <strong>{listenUrl.url}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="settings-card">
+                <article className="vpn-widget">
+                  <div className="vpn-widget__header">
+                    <img alt="Portal VPN shield" className="vpn-widget__logo" src={portalShieldLogo} />
+                    <div>
+                      <strong>Professional connection shield</strong>
+                      <span>USA-ready VPN for AI tools</span>
+                    </div>
+                  </div>
+                  <ul className="vpn-widget__list">
+                    <li>Encrypts all traffic</li>
+                    <li>Keeps browsing more anonymous</li>
+                    <li>USA locations so AI services work normally</li>
+                    <li>FREE tier stays unlimited</li>
+                  </ul>
+                  <a
+                    className="primary-button vpn-widget__cta"
+                    href="https://t.me/portal_service_bot"
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Connect free USA VPN
+                  </a>
+                </article>
+              </div>
             </div>
           </section>
         </div>
+
+        <footer className="status-bar">
+          <div className="status-bar__group">
+            <button className="status-bar__chip" type="button" onClick={() => onTabChange("chat")}>
+              Local
+            </button>
+            <button className="status-bar__chip" type="button" onClick={() => onTabChange("activity")}>
+              Terminal
+            </button>
+            <span className="status-bar__chip">{currentSession?.preferences.model ?? "GPT-5.4"}</span>
+            <span className="status-bar__chip">{currentSpeed}</span>
+          </div>
+          <div className="status-bar__group">
+            <span className="status-bar__chip">{formatApprovalLabel(currentSession?.preferences.approvalPolicy ?? settings.defaultApprovalPolicy)}</span>
+            <span className="status-bar__chip">{activeWorkspaceLabel}</span>
+            <span className="status-bar__chip">master</span>
+          </div>
+        </footer>
 
         <nav className="mobile-nav" aria-label="Primary">
           {(["chat", "activity", "sessions", "settings"] as ShellTab[]).map((tab) => (
@@ -960,6 +1149,7 @@ function WorkspaceGroupCard({
         >
           <strong>{group.label}</strong>
           <span>{group.path}</span>
+          <small>{`${group.sessions.length} live · ${group.history.length} synced`}</small>
         </button>
         <button aria-label={`New in ${group.label}`} className="secondary-button" type="button" onClick={() => onCreateSession(group.path)}>
           {`New in ${group.label}`}
@@ -973,8 +1163,11 @@ function WorkspaceGroupCard({
             type="button"
             onClick={() => onSelectSession(session.id)}
           >
-            <strong>{compactSessionTitle(session.title)}</strong>
-            <span>{session.status}</span>
+            <div className="workspace-item__row">
+              <strong>{compactSessionTitle(session.title)}</strong>
+              <span>{formatRelativeTime(session.updatedAt)}</span>
+            </div>
+            <span>{session.mode === "plan" ? "structured" : session.status}</span>
           </button>
         ))}
         {group.history.map((entry) => (
@@ -984,8 +1177,11 @@ function WorkspaceGroupCard({
             type="button"
             onClick={() => onImportHistory(entry.threadId, entry.path)}
           >
-            <strong>{compactSessionTitle(entry.preview)}</strong>
-            <span>history</span>
+            <div className="workspace-item__row">
+              <strong>{compactSessionTitle(entry.preview)}</strong>
+              <span>{formatRelativeTime(entry.updatedAt)}</span>
+            </div>
+            <span>synced history</span>
           </button>
         ))}
       </div>
@@ -1019,6 +1215,7 @@ function WorkspaceGroupPanel({
         >
           <strong>{group.label}</strong>
           <span>{group.path}</span>
+          <small>{`${group.sessions.length} live · ${group.history.length} synced`}</small>
         </button>
         <button aria-label={`New in ${group.label}`} className="secondary-button" type="button" onClick={() => onCreateSession(group.path)}>
           {`New in ${group.label}`}
@@ -1045,7 +1242,7 @@ function WorkspaceGroupPanel({
               <strong>{compactSessionTitle(entry.preview)}</strong>
               <span>{entry.cwd}</span>
             </div>
-            <span>import</span>
+            <span>open</span>
           </button>
         ))}
       </div>
@@ -1065,6 +1262,47 @@ function MessageBubble({ message }: { message: SessionMessage }) {
       <p>{message.text}</p>
     </article>
   );
+}
+
+function ConversationFeedItem({
+  item,
+  onResolveApproval,
+}: {
+  item: ConversationTimelineItem;
+  onResolveApproval: (
+    requestId: string,
+    decision: "accept" | "acceptForSession" | "decline" | "cancel",
+    applyExecPolicyAmendment?: boolean,
+  ) => Promise<void> | void;
+}) {
+  switch (item.kind) {
+    case "message":
+      return <MessageBubble message={item.message} />;
+    case "activity":
+      return <ActivityRow item={item.activity} />;
+    case "command":
+      return (
+        <article className="log-card log-card--inline">
+          <header>
+            <strong>{item.command.command}</strong>
+            <span>{item.command.status}</span>
+          </header>
+          <pre>{item.command.aggregatedOutput || "No output yet."}</pre>
+        </article>
+      );
+    case "approval":
+      return (
+        <ApprovalCard approval={item.approval} onResolve={onResolveApproval} />
+      );
+    case "plan":
+      return (
+        <article className="activity-row activity-row--plan">
+          <strong>Plan block</strong>
+          <span>structured</span>
+          <p>{item.plan.text}</p>
+        </article>
+      );
+  }
 }
 
 function ActivityRow({ item }: { item: ActivityItem }) {
@@ -1140,6 +1378,23 @@ function formatWorkspaceLabel(workspacePath: string): string {
   return segments.at(-1) ?? workspacePath;
 }
 
+function formatRelativeTime(timestamp: number): string {
+  const diffMs = Date.now() - timestamp;
+  const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
+  if (diffMinutes < 1) {
+    return "now";
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m`;
+  }
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours}h`;
+  }
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d`;
+}
+
 function buildWorkspaceGroups({
   sessions,
   historyEntries,
@@ -1203,6 +1458,65 @@ function buildWorkspaceGroups({
     }
     return right.lastTouchedAt - left.lastTouchedAt || left.label.localeCompare(right.label);
   });
+}
+
+function buildConversationFeed(session: SessionRecord | null): ConversationTimelineItem[] {
+  if (!session) {
+    return [];
+  }
+
+  const feed: ConversationTimelineItem[] = [];
+
+  for (const message of session.messages) {
+    feed.push({
+      key: `message-${message.itemId}`,
+      createdAt: message.createdAt,
+      kind: "message",
+      message,
+    });
+  }
+
+  for (const activity of session.activity) {
+    if (activity.type === "command" || activity.type === "plan") {
+      continue;
+    }
+
+    feed.push({
+      key: `activity-${activity.id}`,
+      createdAt: activity.createdAt,
+      kind: "activity",
+      activity,
+    });
+  }
+
+  for (const command of session.commands) {
+    feed.push({
+      key: `command-${command.itemId}`,
+      createdAt: command.createdAt,
+      kind: "command",
+      command,
+    });
+  }
+
+  for (const approval of session.approvals) {
+    feed.push({
+      key: `approval-${approval.id}`,
+      createdAt: approval.createdAt,
+      kind: "approval",
+      approval,
+    });
+  }
+
+  for (const plan of session.planBlocks) {
+    feed.push({
+      key: `plan-${plan.itemId}`,
+      createdAt: plan.createdAt,
+      kind: "plan",
+      plan,
+    });
+  }
+
+  return feed.sort((left, right) => left.createdAt - right.createdAt || left.key.localeCompare(right.key));
 }
 
 function buildQuickActions(

@@ -1,7 +1,7 @@
 import {
   startTransition,
+  useCallback,
   useEffect,
-  useEffectEvent,
   useRef,
   useState,
 } from "react";
@@ -58,7 +58,7 @@ export function App() {
     ? sessions.find((session) => session.id === activeSessionId) ?? null
     : null;
 
-  const refreshShell = useEffectEvent(async () => {
+  const refreshShell = useCallback(async () => {
     try {
       const nextSettings = await api.getSettings();
       startTransition(() => {
@@ -103,13 +103,13 @@ export function App() {
         setAuthState("login");
       });
     }
-  });
+  }, []);
 
   useEffect(() => {
     void refreshShell();
   }, [refreshShell]);
 
-  const applySessionSnapshot = useEffectEvent((session: SessionRecord) => {
+  const applySessionSnapshot = useCallback((session: SessionRecord) => {
     startTransition(() => {
       setSessions((current) => {
         const next = [...current];
@@ -126,7 +126,7 @@ export function App() {
       setActiveSessionId((current) => current ?? session.id);
       setSelectedWorkspacePath((current) => current ?? session.cwd);
     });
-  });
+  }, []);
 
   useEffect(() => {
     if (!currentSession?.cwd) {
@@ -136,16 +136,16 @@ export function App() {
     setSelectedWorkspacePath(currentSession.cwd);
   }, [currentSession?.cwd]);
 
-  const refreshCurrentSession = useEffectEvent(async (sessionId: string) => {
+  const refreshCurrentSession = useCallback(async (sessionId: string) => {
     try {
       const response = await api.getSession(sessionId);
       applySessionSnapshot(response.session);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Failed to refresh the session.");
     }
-  });
+  }, [applySessionSnapshot]);
 
-  const refreshSessionMetadata = useEffectEvent(async (sessionId: string) => {
+  const refreshSessionMetadata = useCallback(async (sessionId: string) => {
     try {
       const [models, mcp] = await Promise.all([
         api.listModels(sessionId),
@@ -161,7 +161,7 @@ export function App() {
         setMcpStatus([]);
       });
     }
-  });
+  }, []);
 
   useEffect(() => {
     if (!authenticated || !currentSession?.id) {
@@ -172,6 +172,44 @@ export function App() {
 
     void refreshSessionMetadata(currentSession.id);
   }, [authenticated, currentSession?.id, refreshSessionMetadata]);
+
+  const syncExternalState = useCallback(async () => {
+    if (!authenticated) {
+      return;
+    }
+
+    try {
+      const [list, history] = await Promise.all([
+        api.listSessions(),
+        api.listHistory(),
+      ]);
+      startTransition(() => {
+        setSessions(list.sessions);
+        setHistoryEntries(history.entries);
+        setActiveSessionId((current) =>
+          current && list.sessions.some((session) => session.id === current)
+            ? current
+            : list.sessions[0]?.id ?? null,
+        );
+      });
+    } catch {
+      // Live polling is a silent sync path; keep the current UI if the request blips.
+    }
+  }, [authenticated]);
+
+  useEffect(() => {
+    if (!authenticated) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void syncExternalState();
+    }, 1500);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [authenticated, syncExternalState]);
 
   useEffect(() => {
     if (!authenticated || !currentSession) {

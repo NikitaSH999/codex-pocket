@@ -1,7 +1,12 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { CodexHistoryEntry, SessionMessage, SessionRecord } from "../../shared/contracts";
+import type {
+  CodexHistoryEntry,
+  SessionMessage,
+  SessionPreferences,
+  SessionRecord,
+} from "../../shared/contracts";
 import { createSessionRecord } from "../state/session-reducer";
 
 interface HistoryIndexOptions {
@@ -41,6 +46,7 @@ export async function indexCodexHistory(
 export async function importHistorySession(
   historyPath: string,
   mode: "default" | "plan" = "default",
+  preferences?: SessionPreferences,
 ): Promise<SessionRecord | null> {
   const parsed = await parseHistoryFile(historyPath);
   if (!parsed) {
@@ -52,6 +58,11 @@ export async function importHistorySession(
     threadId: parsed.entry.threadId,
     cwd: parsed.entry.cwd,
     mode,
+    preferences: preferences ?? {
+      model: null,
+      reasoningEffort: null,
+      approvalPolicy: "never",
+    },
     title: compactTitle(parsed.entry.preview),
   });
 

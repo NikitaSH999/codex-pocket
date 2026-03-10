@@ -47,11 +47,13 @@ export class SessionService {
   constructor(private readonly options: SessionServiceOptions) {}
 
   async listSessions(): Promise<SessionRecord[]> {
+    await this.syncExternalHistoryIntoState();
     const state = await this.options.store.read();
     return Object.values(state.sessions).sort((left, right) => right.updatedAt - left.updatedAt);
   }
 
   async getSession(sessionId: string): Promise<SessionRecord | null> {
+    await this.syncExternalHistoryIntoState();
     const state = await this.options.store.read();
     return state.sessions[sessionId] ?? null;
   }
@@ -92,10 +94,11 @@ export class SessionService {
   }
 
   async listHistory(workspacePath?: string): Promise<CodexHistoryEntry[]> {
+    await this.syncExternalHistoryIntoState();
     return indexCodexHistory({
       sessionsRoot: this.options.codexSessionsDir,
       workspacePath,
-      limit: 80,
+      limit: 300,
     });
   }
 
@@ -109,7 +112,11 @@ export class SessionService {
       return existing;
     }
 
-    const imported = await importHistorySession(historyPath, mode);
+    const imported = await importHistorySession(
+      historyPath,
+      mode,
+      resolvePreferences(await this.options.store.read()),
+    );
     if (!imported) {
       throw new Error("History thread not found");
     }
@@ -299,6 +306,73 @@ export class SessionService {
         this.listeners.delete(sessionId);
       }
     };
+  }
+
+  private async syncExternalHistoryIntoState(): Promise<void> {
+    const state = await this.options.store.read();
+    const entries = await indexCodexHistory({
+      sessionsRoot: this.options.codexSessionsDir,
+      limit: 300,
+    });
+    const updates: SessionRecord[] = [];
+
+    for (const entry of entries) {
+      const existing = state.sessions[entry.threadId];
+      if (existing && existing.updatedAt >= entry.updatedAt) {
+        continue;
+      }
+
+      const imported = await importHistorySession(
+        entry.path,
+        existing?.mode ?? state.settings.defaultMode,
+        existing?.preferences ?? resolvePreferences(state),
+      );
+      if (!imported) {
+        continue;
+      }
+
+      updates.push(
+        existing
+          ? {
+              ...existing,
+              cwd: imported.cwd,
+              title:
+                existing.title === "Новая сессия" ||
+                existing.title === "Session draft" ||
+                existing.title.endsWith("(fork)")
+                  ? imported.title
+                  : existing.title,
+              createdAt: Math.min(existing.createdAt, imported.createdAt),
+              updatedAt: imported.updatedAt,
+              messages: imported.messages,
+              planBlocks: imported.planBlocks,
+              status:
+                existing.status === "running" || existing.status === "waiting"
+                  ? existing.status
+                  : "done",
+            }
+          : {
+              ...imported,
+              preferences: resolvePreferences(state),
+              approvals: [],
+            },
+      );
+    }
+
+    if (!updates.length) {
+      return;
+    }
+
+    await this.options.store.write((current) => ({
+      ...current,
+      sessions: updates.reduce(
+        (sessions, session) => ({
+          ...sessions,
+          [session.id]: session,
+        }),
+        current.sessions,
+      ),
+    }));
   }
 
   private async ensureBridge(session: SessionRecord): Promise<CodexBridgeLike> {
