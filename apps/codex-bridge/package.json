@@ -1,0 +1,29 @@
+{
+  "name": "@codex-phone/codex-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/apps/codex-bridge/src/index.js",
+  "types": "./dist/apps/codex-bridge/src/index.d.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/apps/codex-bridge/src/index.js",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@codex-phone/shared": "file:../../packages/shared",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "ws": "^8.18.2",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.18",
+    "@types/express": "^5.0.3",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.20.5",
+    "vitest": "^3.2.4"
+  }
+}

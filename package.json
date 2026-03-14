@@ -1,69 +1,22 @@
 {
   "name": "codex-pocket",
-  "version": "0.1.0",
-  "private": false,
-  "description": "Mobile-first local web UI for Codex — control your AI coding agent from any device",
-  "author": "NikitaSH999",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/NikitaSH999/codex-pocket.git"
-  },
-  "homepage": "https://github.com/NikitaSH999/codex-pocket",
-  "bugs": {
-    "url": "https://github.com/NikitaSH999/codex-pocket/issues"
-  },
-  "keywords": [
-    "codex",
-    "openai",
-    "mobile",
-    "webui",
-    "ai-agent",
-    "coding-assistant",
-    "json-rpc"
-  ],
-  "engines": {
-    "node": ">=18.0.0"
-  },
+  "version": "0.0.2v",
+  "private": true,
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
-    "dev:server": "tsx watch src/server/main.ts",
-    "dev:client": "vite",
-    "build": "npm run build:client && npm run build:server",
-    "build:client": "vite build",
-    "build:server": "tsup src/server/main.ts --format esm --platform node --out-dir dist/server --clean",
-    "start": "node dist/server/main.js",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
-  "dependencies": {
-    "@achingbrain/nat-port-mapper": "^4.0.5",
-    "@fastify/cookie": "^9.4.0",
-    "@fastify/static": "^6.12.0",
-    "@fastify/websocket": "^8.3.1",
-    "argon2": "^0.41.1",
-    "fastify": "^4.28.1",
-    "nanoid": "^5.1.5",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "ws": "^8.18.3",
-    "zod": "^3.24.2"
+    "build": "npm run build -w @codex-phone/shared && npm run build -w @codex-phone/codex-bridge && npm run build -w @codex-phone/mobile-pwa",
+    "dev:bridge": "npm run dev -w @codex-phone/codex-bridge",
+    "dev:pwa": "npm run dev -w @codex-phone/mobile-pwa",
+    "start:bridge": "npm run start -w @codex-phone/codex-bridge",
+    "test": "npm run test -w @codex-phone/shared && npm run test -w @codex-phone/codex-bridge && npm run test -w @codex-phone/mobile-pwa",
+    "lint": "npm run lint -w @codex-phone/codex-bridge && npm run lint -w @codex-phone/mobile-pwa"
   },
   "devDependencies": {
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.2.0",
-    "@types/node": "^22.13.10",
-    "@types/react": "^19.0.12",
-    "@types/react-dom": "^19.0.4",
-    "@types/ws": "^8.5.14",
-    "@vitejs/plugin-react": "^4.3.4",
-    "concurrently": "^9.1.2",
-    "jsdom": "^26.0.0",
-    "tsup": "^8.4.0",
-    "tsx": "^4.19.3",
-    "typescript": "^5.8.2",
-    "vite": "^6.2.1",
-    "vitest": "^3.0.8"
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.3"
   }
 }

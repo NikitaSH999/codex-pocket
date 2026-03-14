@@ -1,27 +1,10 @@
 node_modules/
 dist/
-.local/
-.tmp-*/
-.tmp-test-auth-*/
-.tmp-cookie.txt
-.tmp-ui-check.png
-*.log
-coverage/
-*.tsbuildinfo
-
-# OS
+.vite/
 .DS_Store
-Thumbs.db
-Desktop.ini
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# Environment
+coverage/
 .env
-.env.local
-.env.*.local
+*.local
+apps/codex-bridge/data/
+apps/codex-bridge/logs/
+apps/codex-bridge/apps/
